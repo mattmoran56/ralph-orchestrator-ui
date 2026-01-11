@@ -120,18 +120,18 @@ class Orchestrator {
         break
       }
 
-      // Get next task to work on
-      const nextTask = this.getNextTask(project)
+      // Check if there are any tasks to work on (used as fallback)
+      const fallbackTask = this.getNextTask(project)
 
-      if (!nextTask) {
+      if (!fallbackTask) {
         // All tasks complete
         this.log(projectId, 'All tasks completed!')
         await this.completeProject(project, workingDirectory)
         break
       }
 
-      // Work on the task
-      await this.workOnTask(project, nextTask, workingDirectory)
+      // Work on tasks - Claude will choose which one
+      await this.workOnTask(project, fallbackTask, workingDirectory)
 
       // Small delay between tasks
       await this.delay(2000)
@@ -215,11 +215,32 @@ class Orchestrator {
   }
 
   /**
+   * Parse Claude's task selection from output
+   * Looks for WORKING_ON: <task-id> pattern and returns the matching task
+   */
+  private parseTaskSelection(output: string, project: Project): Task | null {
+    // Match WORKING_ON: followed by a task ID (case-insensitive for keyword)
+    // Task IDs can contain lowercase letters, numbers, and hyphens
+    const match = output.match(/WORKING_ON:\s*([a-z0-9-]+)/i)
+
+    if (!match) {
+      return null
+    }
+
+    const taskId = match[1]
+
+    // Find the matching task in the project
+    const task = project.tasks.find((t) => t.id === taskId)
+
+    return task || null
+  }
+
+  /**
    * Work on a single task
    */
   private async workOnTask(
     project: Project,
-    task: Task,
+    fallbackTask: Task,
     workingDirectory: string
   ): Promise<void> {
     const stateManager = getStateManager()
@@ -229,30 +250,16 @@ class Orchestrator {
     const orchestratorState = this.activeProjects.get(project.id)
     if (!orchestratorState || orchestratorState.status !== 'running') return
 
-    orchestratorState.currentTaskId = task.id
-
-    this.log(project.id, `Working on task: ${task.title}`)
-
-    // Update task status to in_progress
-    const now = new Date().toISOString()
-    stateManager.updateTask(project.id, task.id, {
-      status: 'in_progress',
-      attempts: task.attempts + 1,
-      startedAt: task.startedAt || now, // Only set if not already started (for retries)
-      verifyingAt: undefined, // Clear verifying timestamp on retry
-      completedAt: undefined // Clear completed timestamp on retry
-    })
-
-    // Build the prompt
+    // Build the prompt (shows all tasks, Claude chooses which to work on)
     const prompt = this.buildTaskPrompt(project)
 
-    // Get log file path
-    const logFilePath = processManager.getLogFilePath(project.id, task.id)
+    // Get log file path using fallback task ID (will be renamed if different task selected)
+    const logFilePath = processManager.getLogFilePath(project.id, fallbackTask.id)
 
     // Start Claude process
     const processId = await processManager.startProcess({
       projectId: project.id,
-      taskId: task.id,
+      taskId: fallbackTask.id,
       prompt,
       workingDirectory,
       logFilePath
@@ -267,6 +274,47 @@ class Orchestrator {
     if (orchestratorState.status !== 'running') {
       return
     }
+
+    // Parse Claude's task selection from output
+    // Refresh project to get latest task states
+    const refreshedProject = stateManager.getProject(project.id)
+    if (!refreshedProject) return
+
+    let task = this.parseTaskSelection(result.output, refreshedProject)
+
+    if (task) {
+      this.log(project.id, `Claude selected task: ${task.title}`)
+    } else {
+      this.log(project.id, `Warning: Could not parse task selection from output, using fallback task`)
+      // Use the fallback task but get fresh version from state
+      task = refreshedProject.tasks.find((t) => t.id === fallbackTask.id) || fallbackTask
+    }
+
+    orchestratorState.currentTaskId = task.id
+
+    // Update task status to in_progress if it was in backlog
+    const now = new Date().toISOString()
+    if (task.status === 'backlog') {
+      stateManager.updateTask(project.id, task.id, {
+        status: 'in_progress',
+        attempts: task.attempts + 1,
+        startedAt: now,
+        verifyingAt: undefined,
+        completedAt: undefined
+      })
+      // Refresh task with updated values
+      task = { ...task, status: 'in_progress', attempts: task.attempts + 1, startedAt: now }
+    } else {
+      // Task was already in_progress or verifying, just increment attempts
+      stateManager.updateTask(project.id, task.id, {
+        attempts: task.attempts + 1,
+        verifyingAt: undefined,
+        completedAt: undefined
+      })
+      task = { ...task, attempts: task.attempts + 1 }
+    }
+
+    this.log(project.id, `Working on task: ${task.title}`)
 
     // Handle result
     if (result.taskBlocked) {
@@ -306,7 +354,7 @@ class Orchestrator {
 
       // Run verification
       const verificationResult = await verifier.verifyTask(
-        project,
+        refreshedProject,
         task,
         workingDirectory
       )
