@@ -216,12 +216,26 @@ ipcMain.handle('github:listRepos', async () => {
   }
 
   try {
-    // List all accessible repositories with relevant fields
+    // Use gh api to fetch all repos user has access to (personal, org, collaborator)
+    // --paginate ensures we get all results, not just the first page
     const output = execSync(
-      'gh repo list --json name,nameWithOwner,url,owner,isPrivate --limit 100',
-      { encoding: 'utf-8', stdio: 'pipe' }
+      'gh api /user/repos --paginate -q \'.[] | {name: .name, nameWithOwner: .full_name, url: .html_url, owner: {login: .owner.login}, isPrivate: .private}\'',
+      { encoding: 'utf-8', stdio: 'pipe', maxBuffer: 10 * 1024 * 1024 }
     )
-    return JSON.parse(output)
+
+    // Parse newline-delimited JSON objects
+    const repos = output
+      .trim()
+      .split('\n')
+      .filter((line: string) => line.trim())
+      .map((line: string) => JSON.parse(line))
+
+    // Sort by nameWithOwner for consistent ordering
+    repos.sort((a: { nameWithOwner: string }, b: { nameWithOwner: string }) =>
+      a.nameWithOwner.localeCompare(b.nameWithOwner)
+    )
+
+    return repos
   } catch (error) {
     const err = error as { stderr?: string }
     throw new Error(err.stderr || 'Failed to list GitHub repositories')
