@@ -36,7 +36,7 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: KanbanBoardProps) {
-  const { getProject } = useProjectStore()
+  const { getProject, selectedTaskId } = useProjectStore()
   const { startProject, stopProject } = useElectronProjects()
   const { createTask, updateTask } = useElectronTasks()
   const project = getProject(projectId)
@@ -145,6 +145,7 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
                 setAddingToColumn(null)
               }}
               onCancelAddTask={() => setAddingToColumn(null)}
+              selectedTaskId={selectedTaskId}
             />
           ))}
         </div>
@@ -163,7 +164,8 @@ function KanbanColumn({
   isAddingTask,
   onAddTaskClick,
   onCreateTask,
-  onCancelAddTask
+  onCancelAddTask,
+  selectedTaskId
 }: {
   columnId: TaskStatus
   title: string
@@ -175,6 +177,7 @@ function KanbanColumn({
   onAddTaskClick: () => void
   onCreateTask: (title: string) => void
   onCancelAddTask: () => void
+  selectedTaskId: string | null
 }) {
   const [isDragOver, setIsDragOver] = useState(false)
 
@@ -210,7 +213,12 @@ function KanbanColumn({
       </div>
       <div className="space-y-2 min-h-[100px] flex flex-col">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            onClick={() => onTaskClick(task.id)}
+            isSelected={task.id === selectedTaskId}
+          />
         ))}
 
         {/* Inline new task input */}
@@ -235,14 +243,14 @@ function KanbanColumn({
   )
 }
 
-function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
+function TaskCard({ task, onClick, isSelected }: { task: Task; onClick: () => void; isSelected: boolean }) {
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('taskId', task.id)
   }
 
   return (
     <div
-      className="task-card"
+      className={`task-card ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
       draggable
       onDragStart={handleDragStart}

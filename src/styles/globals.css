@@ -36,6 +36,10 @@
     @apply shadow-lg opacity-90;
   }
 
+  .task-card.selected {
+    @apply bg-ralph-50 dark:bg-ralph-900/50 border-2 border-ralph-500 dark:border-ralph-400 shadow-md;
+  }
+
   /* Status badges */
   .status-badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
