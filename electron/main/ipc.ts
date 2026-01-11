@@ -9,6 +9,47 @@ import { getRepoManager } from '../orchestrator/RepoManager'
 const stateManager = getStateManager()
 const repoManager = getRepoManager()
 
+/**
+ * Helper function to sync a project's tasks to the workspace tasks.json file.
+ * This should be called after any task modification (create, update, delete, reorder).
+ * Handles missing workspaces gracefully - workspace may not exist yet.
+ */
+function syncTasksToWorkspace(projectId: string): boolean {
+  const project = stateManager.getProject(projectId)
+  if (!project) return false
+
+  // Build the workspace tasks data structure
+  const tasksData: WorkspaceTasksData = {
+    project: {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      productBrief: project.productBrief,
+      solutionBrief: project.solutionBrief
+    },
+    tasks: project.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      acceptanceCriteria: task.acceptanceCriteria,
+      priority: task.priority,
+      status: task.status,
+      attempts: task.attempts,
+      startedAt: task.startedAt || null,
+      verifyingAt: task.verifyingAt || null,
+      completedAt: task.completedAt || null
+    }))
+  }
+
+  // Attempt to write - this will fail gracefully if workspace doesn't exist
+  const success = stateManager.writeWorkspaceTasks(projectId, tasksData)
+  if (!success) {
+    // This is expected if workspace hasn't been set up yet - not an error
+    console.log(`[ipc] Could not sync tasks to workspace for project ${projectId} - workspace may not exist yet`)
+  }
+  return success
+}
+
 // Path operations
 ipcMain.handle('get-paths', () => {
   return stateManager.getDataPaths()
@@ -101,7 +142,14 @@ ipcMain.handle('project:create', async (_event, input) => {
 })
 
 ipcMain.handle('project:update', (_event, id: string, updates) => {
-  return stateManager.updateProject(id, updates)
+  const result = stateManager.updateProject(id, updates)
+
+  // Sync to workspace if project metadata changed (name, description, briefs)
+  if (result && (updates.name || updates.description || updates.productBrief || updates.solutionBrief)) {
+    syncTasksToWorkspace(id)
+  }
+
+  return result
 })
 
 ipcMain.handle('project:delete', (_event, id: string) => {
@@ -156,7 +204,12 @@ ipcMain.handle('task:get', (_event, projectId: string, taskId: string) => {
 })
 
 ipcMain.handle('task:create', (_event, projectId: string, input) => {
-  return stateManager.createTask(projectId, input)
+  const task = stateManager.createTask(projectId, input)
+  if (task) {
+    // Sync to workspace after creating task
+    syncTasksToWorkspace(projectId)
+  }
+  return task
 })
 
 ipcMain.handle('task:update', (_event, projectId: string, taskId: string, updates) => {
@@ -174,11 +227,41 @@ ipcMain.handle('task:update', (_event, projectId: string, taskId: string, update
     }
   }
 
+  // Sync to workspace after updating task
+  if (result) {
+    syncTasksToWorkspace(projectId)
+  }
+
   return result
 })
 
 ipcMain.handle('task:delete', (_event, projectId: string, taskId: string) => {
-  return stateManager.deleteTask(projectId, taskId)
+  const result = stateManager.deleteTask(projectId, taskId)
+  if (result) {
+    // Sync to workspace after deleting task
+    syncTasksToWorkspace(projectId)
+  }
+  return result
+})
+
+ipcMain.handle('task:reorder', (_event, projectId: string, taskIds: string[]) => {
+  // Update priorities based on the new order
+  const project = stateManager.getProject(projectId)
+  if (!project) return false
+
+  // Update each task's priority based on its position in the taskIds array
+  let updated = false
+  for (let i = 0; i < taskIds.length; i++) {
+    const result = stateManager.updateTask(projectId, taskIds[i], { priority: i })
+    if (result) updated = true
+  }
+
+  // Sync to workspace after reordering
+  if (updated) {
+    syncTasksToWorkspace(projectId)
+  }
+
+  return updated
 })
 
 // Log operations
