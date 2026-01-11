@@ -130,8 +130,8 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
       </div>
 
       {/* Kanban columns */}
-      <div className="overflow-x-auto p-4">
-        <div className="flex gap-4 min-w-max items-start">
+      <div className="overflow-x-auto p-4 flex-1 flex flex-col">
+        <div className="flex gap-4 min-w-max items-stretch flex-1">
           {columns.map((column) => (
             <KanbanColumn
               key={column.id}
@@ -219,7 +219,7 @@ function KanbanColumn({
         <h3 className="font-medium text-gray-700 dark:text-gray-300">{title}</h3>
         <span className="ml-auto text-sm text-gray-500">{tasks.length}</span>
       </div>
-      <div className="space-y-2 min-h-[100px] flex flex-col">
+      <div className="space-y-2 min-h-[100px] flex flex-col flex-1">
         {tasks.map((task) => (
           <TaskCard
             key={task.id}

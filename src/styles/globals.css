@@ -22,7 +22,7 @@
 
   /* Kanban column styles */
   .kanban-column {
-    @apply flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-800 rounded-lg p-3;
+    @apply flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex flex-col;
   }
 
   /* Task card styles */
