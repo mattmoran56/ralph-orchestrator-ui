@@ -149,6 +149,15 @@ export function ProjectList({ isSettingsSelected, onSettingsClick, onProjectCrea
   )
 }
 
+type StatusGroup = 'not_started' | 'in_progress' | 'completed' | 'failed'
+
+const STATUS_GROUPS: { id: StatusGroup; label: string; statuses: string[] }[] = [
+  { id: 'not_started', label: 'Not started', statuses: ['idle', 'paused'] },
+  { id: 'in_progress', label: 'In progress', statuses: ['running'] },
+  { id: 'completed', label: 'Completed', statuses: ['completed'] },
+  { id: 'failed', label: 'Failed', statuses: ['failed'] }
+]
+
 function RepositorySection({
   repository,
   projects,
@@ -172,7 +181,40 @@ function RepositorySection({
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // Completed is collapsed by default
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<StatusGroup>>(new Set(['completed']))
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Group projects by status
+  const projectsByGroup = useMemo(() => {
+    const grouped: Record<StatusGroup, Project[]> = {
+      not_started: [],
+      in_progress: [],
+      completed: [],
+      failed: []
+    }
+
+    for (const project of projects) {
+      const group = STATUS_GROUPS.find((g) => g.statuses.includes(project.status))
+      if (group) {
+        grouped[group.id].push(project)
+      }
+    }
+
+    return grouped
+  }, [projects])
+
+  const toggleGroupCollapse = (groupId: StatusGroup) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -196,42 +238,19 @@ function RepositorySection({
     setShowDeleteConfirm(false)
   }
 
+  const [isHovered, setIsHovered] = useState(false)
+
   return (
     <>
-      <div className="group">
+      <div>
         {/* Repository header */}
-        <div className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md">
+        <div
+          className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
           <button onClick={onToggle} className="flex-1 flex items-center gap-2 text-left min-w-0">
-            <svg
-              className={`w-3 h-3 flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <svg className="w-4 h-4 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
             <span className="text-sm font-medium truncate">{repository.name}</span>
-            <span className="text-xs text-gray-400 flex-shrink-0">({projects.length})</span>
-          </button>
-
-          {/* Add project button on hover */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddProject()
-            }}
-            className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity"
-            title="Add project to this repository"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeWidth={2} d="M12 6v12m-6-6h12" />
-            </svg>
           </button>
 
           {/* More menu */}
@@ -241,7 +260,7 @@ function RepositorySection({
                 e.stopPropagation()
                 setShowMenu(!showMenu)
               }}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity"
+              className={`p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity ${isHovered || showMenu ? 'opacity-100' : 'opacity-0'}`}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -249,6 +268,16 @@ function RepositorySection({
             </button>
             {showMenu && (
               <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowMenu(false)
+                    onAddProject()
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Add Project
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -264,23 +293,74 @@ function RepositorySection({
               </div>
             )}
           </div>
+
+          {/* Chevron on the right */}
+          <button onClick={onToggle} className="p-0.5 text-gray-400">
+            <svg
+              className={`w-3 h-3 flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
         </div>
 
-        {/* Nested projects */}
+        {/* Nested projects grouped by status */}
         {!isCollapsed && (
-          <div className="ml-5 space-y-0.5">
+          <div className="mt-1">
             {projects.length === 0 ? (
               <div className="text-xs text-gray-400 py-1 px-2">No projects</div>
             ) : (
-              projects.map((project) => (
-                <ProjectItem
-                  key={project.id}
-                  project={project}
-                  isSelected={project.id === selectedProjectId}
-                  onSelect={() => onSelectProject(project.id)}
-                  onDelete={() => onDeleteProject(project.id)}
-                />
-              ))
+              STATUS_GROUPS.map((group) => {
+                const groupProjects = projectsByGroup[group.id]
+                if (groupProjects.length === 0) return null
+
+                const isGroupCollapsed = collapsedGroups.has(group.id)
+
+                return (
+                  <div key={group.id} className="mb-3">
+                    {/* Status group header */}
+                    <button
+                      onClick={() => toggleGroupCollapse(group.id)}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                      <svg
+                        className={`w-2.5 h-2.5 flex-shrink-0 transition-transform ${isGroupCollapsed ? '' : 'rotate-90'}`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span>{group.label}</span>
+                      <span className="text-gray-400">({groupProjects.length})</span>
+                    </button>
+
+                    {/* Projects in this group */}
+                    {!isGroupCollapsed && (
+                      <div className="ml-2 space-y-0.5">
+                        {groupProjects.map((project) => (
+                          <ProjectItem
+                            key={project.id}
+                            project={project}
+                            isSelected={project.id === selectedProjectId}
+                            onSelect={() => onSelectProject(project.id)}
+                            onDelete={() => onDeleteProject(project.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         )}
@@ -330,6 +410,7 @@ function ProjectItem({
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const statusIndicator = {
@@ -365,11 +446,13 @@ function ProjectItem({
   return (
     <>
       <div
-        className={`group w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors text-left ${
+        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors text-left ${
           isSelected
             ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
             : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
         }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         <button
           onClick={onSelect}
@@ -386,7 +469,7 @@ function ProjectItem({
               e.stopPropagation()
               setShowMenu(!showMenu)
             }}
-            className="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+            className={`p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-opacity ${isHovered || showMenu ? 'opacity-100' : 'opacity-0'}`}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />

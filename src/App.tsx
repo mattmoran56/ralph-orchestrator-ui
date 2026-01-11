@@ -25,6 +25,8 @@ function App() {
   const { selectedProjectId, selectedTaskId, isLoading } = useProjectStore()
   const [showSettings, setShowSettings] = useState(false)
   const [sidebarView, setSidebarView] = useState<SidebarView>('none')
+  const [sidebarWidth, setSidebarWidth] = useState(256)
+  const [isResizing, setIsResizing] = useState(false)
 
   // Close settings when a project is selected
   const prevProjectId = usePrevious(selectedProjectId)
@@ -57,6 +59,29 @@ function App() {
     setSidebarView('project')
   }
 
+  // Handle sidebar resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      const newWidth = e.clientX
+      setSidebarWidth(Math.min(Math.max(200, newWidth), 500))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
+
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -70,12 +95,25 @@ function App() {
 
   return (
     <div className="h-screen flex bg-gray-50 dark:bg-gray-900">
-      {/* Left Sidebar - Full height */}
-      <aside className="w-64 bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+      {/* Left Sidebar - Full height, resizable */}
+      <aside
+        className="bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col relative flex-shrink-0"
+        style={{ width: sidebarWidth }}
+      >
         <ProjectList
           isSettingsSelected={showSettings}
           onSettingsClick={handleSettingsClick}
           onProjectCreated={handleProjectCreated}
+        />
+        {/* Resize handle */}
+        <div
+          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-ralph-500 transition-colors ${
+            isResizing ? 'bg-ralph-500' : 'bg-transparent'
+          }`}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setIsResizing(true)
+          }}
         />
       </aside>
 
