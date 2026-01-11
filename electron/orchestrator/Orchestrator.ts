@@ -132,7 +132,17 @@ class Orchestrator {
     const workingDirectory = repoManager.getRepoPath(projectId, repoUrl)
     this.log(projectId, `Working directory: ${workingDirectory}`)
 
-    // Start watching workspace files for real-time UI updates
+    // Ensure .ralph folder and files exist before watching
+    // This handles the case where workspace exists but .ralph doesn't
+    const ralphSetup = repoManager.setupRalphFolder(projectId, repoUrl)
+    if (!ralphSetup.success) {
+      this.log(projectId, `Warning: Could not setup .ralph folder: ${ralphSetup.error}`)
+    }
+
+    // Sync initial task state to workspace (creates tasks.json if needed)
+    this.syncTasksToWorkspace(project)
+
+    // Now start watching workspace files for real-time UI updates
     stateManager.watchWorkspace(projectId)
 
     // Main loop

@@ -380,6 +380,7 @@ class RepoManager {
   /**
    * Setup the .ralph folder structure in a workspace
    * Creates .ralph/ directory with tasks.json, logs.json, and .gitignore
+   * This method is idempotent - it won't overwrite existing files
    */
   setupRalphFolder(projectId: string, repoUrl: string): GitResult {
     const repoPath = this.getRepoPath(projectId, repoUrl)
@@ -397,21 +398,27 @@ class RepoManager {
         mkdirSync(ralphPath, { recursive: true })
       }
 
-      // Create .gitignore to ignore all files in .ralph folder
+      // Create .gitignore if it doesn't exist (always ensure this exists)
       const gitignorePath = join(ralphPath, '.gitignore')
-      writeFileSync(gitignorePath, '*\n', 'utf-8')
+      if (!existsSync(gitignorePath)) {
+        writeFileSync(gitignorePath, '*\n', 'utf-8')
+      }
 
-      // Create tasks.json with empty structure
+      // Create tasks.json with empty structure only if it doesn't exist
       const tasksPath = join(ralphPath, 'tasks.json')
-      const tasksContent = JSON.stringify({ project: {}, tasks: [] }, null, 2)
-      writeFileSync(tasksPath, tasksContent, 'utf-8')
+      if (!existsSync(tasksPath)) {
+        const tasksContent = JSON.stringify({ project: {}, tasks: [] }, null, 2)
+        writeFileSync(tasksPath, tasksContent, 'utf-8')
+      }
 
-      // Create logs.json with empty structure
+      // Create logs.json with empty structure only if it doesn't exist
       const logsPath = join(ralphPath, 'logs.json')
-      const logsContent = JSON.stringify({ entries: [] }, null, 2)
-      writeFileSync(logsPath, logsContent, 'utf-8')
+      if (!existsSync(logsPath)) {
+        const logsContent = JSON.stringify({ entries: [] }, null, 2)
+        writeFileSync(logsPath, logsContent, 'utf-8')
+      }
 
-      return { success: true, output: `Created .ralph folder at ${ralphPath}` }
+      return { success: true, output: `Ensured .ralph folder exists at ${ralphPath}` }
     } catch (error) {
       const err = error as Error
       return { success: false, output: '', error: `Failed to setup .ralph folder: ${err.message}` }
