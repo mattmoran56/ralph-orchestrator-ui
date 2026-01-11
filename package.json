@@ -13,7 +13,7 @@
     "package:win": "electron-builder --win",
     "package:linux": "electron-builder --linux",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

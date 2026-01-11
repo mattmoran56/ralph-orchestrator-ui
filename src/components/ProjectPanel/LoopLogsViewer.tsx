@@ -291,8 +291,13 @@ export function LoopLogsViewer({ projectId, currentIteration, maxIterations }: L
 
   // Update expanded state when new iteration arrives
   useEffect(() => {
-    if (latestIteration !== null && !expandedIterations.has(latestIteration)) {
-      setExpandedIterations(new Set([latestIteration]))
+    if (latestIteration !== null) {
+      setExpandedIterations(prev => {
+        if (!prev.has(latestIteration)) {
+          return new Set([latestIteration])
+        }
+        return prev
+      })
     }
   }, [latestIteration])
 
