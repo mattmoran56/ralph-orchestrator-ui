@@ -418,6 +418,7 @@ class StateManager {
       description: string
       acceptanceCriteria: string[]
       priority?: number
+      status?: TaskStatus
     }
   ): Task | null {
     const project = this.getProject(projectId)
@@ -429,7 +430,7 @@ class StateManager {
       title: input.title,
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
-      status: 'backlog',
+      status: input.status ?? 'backlog',
       priority: input.priority ?? project.tasks.length,
       logs: [],
       attempts: 0,

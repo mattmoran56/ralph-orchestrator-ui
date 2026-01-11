@@ -118,7 +118,7 @@ function App() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-auto">
         {showSettings ? (
           <SettingsPanel />
         ) : selectedProjectId ? (

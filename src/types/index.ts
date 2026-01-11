@@ -115,6 +115,7 @@ export interface CreateTaskInput {
   description: string
   acceptanceCriteria: string[]
   priority?: number
+  status?: TaskStatus
 }
 
 export interface UpdateProjectInput {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface LogViewerProps {
   logContent: string
@@ -6,11 +6,67 @@ interface LogViewerProps {
   onClose?: () => void
   autoScroll?: boolean
   isLive?: boolean
+  resizable?: boolean
+  defaultHeight?: number
+  minHeight?: number
+  maxHeight?: number
+  onHeightChange?: (height: number) => void
 }
 
-export function LogViewer({ logContent, title, onClose, autoScroll = true, isLive = false }: LogViewerProps) {
+export function LogViewer({
+  logContent,
+  title,
+  onClose,
+  autoScroll = true,
+  isLive = false,
+  resizable = false,
+  defaultHeight = 384,
+  minHeight = 150,
+  maxHeight = 800,
+  onHeightChange
+}: LogViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true)
+  const [height, setHeight] = useState(defaultHeight)
+  const [isResizing, setIsResizing] = useState(false)
+
+  // Handle resize
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    if (!resizable) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !wrapperRef.current) return
+      const rect = wrapperRef.current.getBoundingClientRect()
+      const newHeight = e.clientY - rect.top
+      const clampedHeight = Math.min(Math.max(minHeight, newHeight), maxHeight)
+      setHeight(clampedHeight)
+      onHeightChange?.(clampedHeight)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'ns-resize'
+      document.body.style.userSelect = 'none'
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing, resizable, minHeight, maxHeight, onHeightChange])
 
   // Auto-scroll when new content arrives
   useEffect(() => {
@@ -56,10 +112,16 @@ export function LogViewer({ logContent, title, onClose, autoScroll = true, isLiv
     })
   }
 
+  const wrapperStyle = resizable ? { height: `${height}px` } : undefined
+
   return (
-    <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden">
+    <div
+      ref={wrapperRef}
+      className="flex flex-col bg-gray-900 rounded-lg overflow-hidden relative"
+      style={resizable ? { ...wrapperStyle, minHeight: `${minHeight}px` } : { height: '100%' }}
+    >
       {/* Header */}
-      {(title || onClose || isLive) && (
+      {(title || onClose || isLive || resizable) && (
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-300">{title || 'Log Output'}</span>
@@ -74,6 +136,9 @@ export function LogViewer({ logContent, title, onClose, autoScroll = true, isLiv
             )}
           </div>
           <div className="flex items-center gap-2">
+            {resizable && (
+              <span className="text-xs text-gray-500">Drag bottom edge to resize</span>
+            )}
             {!isScrolledToBottom && (
               <button
                 onClick={() => {
@@ -110,6 +175,18 @@ export function LogViewer({ logContent, title, onClose, autoScroll = true, isLiv
           <div className="text-gray-500 italic">No log content</div>
         )}
       </div>
+
+      {/* Resize handle */}
+      {resizable && (
+        <div
+          onMouseDown={handleMouseDown}
+          className={`absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex items-center justify-center transition-colors ${
+            isResizing ? 'bg-ralph-500' : 'bg-gray-700 hover:bg-ralph-500/50'
+          }`}
+        >
+          <div className="w-8 h-1 bg-gray-500 rounded-full" />
+        </div>
+      )}
     </div>
   )
 }
