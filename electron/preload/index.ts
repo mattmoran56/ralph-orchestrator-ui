@@ -14,6 +14,7 @@ const api = {
   createProject: (project: unknown) => ipcRenderer.invoke('project:create', project),
   updateProject: (id: string, updates: unknown) => ipcRenderer.invoke('project:update', id, updates),
   deleteProject: (id: string) => ipcRenderer.invoke('project:delete', id),
+  syncTasks: (projectId: string) => ipcRenderer.invoke('project:syncTasks', projectId),
 
   // Task operations
   createTask: (projectId: string, task: unknown) => ipcRenderer.invoke('task:create', projectId, task),

@@ -1,11 +1,13 @@
 import { ipcMain, app } from 'electron'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { getStateManager } from '../orchestrator/StateManager'
+import { getStateManager, WorkspaceTasksData } from '../orchestrator/StateManager'
 import { getOrchestrator } from '../orchestrator/Orchestrator'
 import { getProcessManager } from '../orchestrator/ProcessManager'
+import { getRepoManager } from '../orchestrator/RepoManager'
 
-// Initialize state manager
+// Initialize state manager and repo manager
 const stateManager = getStateManager()
+const repoManager = getRepoManager()
 
 // Path operations
 ipcMain.handle('get-paths', () => {
@@ -43,8 +45,59 @@ ipcMain.handle('project:get', (_event, id: string) => {
   return stateManager.getProject(id)
 })
 
-ipcMain.handle('project:create', (_event, input) => {
-  return stateManager.createProject(input)
+ipcMain.handle('project:create', async (_event, input) => {
+  // Create the project in StateManager first
+  const project = stateManager.createProject(input)
+
+  // Get repository URL to clone
+  const repository = stateManager.getRepository(input.repositoryId)
+  if (repository) {
+    try {
+      // Clone the repository
+      const cloneResult = await repoManager.cloneRepo(project.id, repository.url)
+      if (!cloneResult.success) {
+        console.error(`Failed to clone repository for project ${project.id}:`, cloneResult.error)
+        // Continue - project still created, workspace setup will be deferred
+      } else {
+        // Checkout or create the working branch
+        const branchResult = repoManager.checkoutOrCreateBranch(
+          project.id,
+          repository.url,
+          project.workingBranch
+        )
+        if (!branchResult.success) {
+          console.error(`Failed to checkout branch for project ${project.id}:`, branchResult.error)
+        }
+
+        // Setup the .ralph folder
+        const ralphResult = repoManager.setupRalphFolder(project.id, repository.url)
+        if (!ralphResult.success) {
+          console.error(`Failed to setup .ralph folder for project ${project.id}:`, ralphResult.error)
+        } else {
+          // Write initial tasks.json with project metadata
+          const tasksData: WorkspaceTasksData = {
+            project: {
+              id: project.id,
+              name: project.name,
+              description: project.description,
+              productBrief: project.productBrief,
+              solutionBrief: project.solutionBrief
+            },
+            tasks: []
+          }
+          const writeSuccess = stateManager.writeWorkspaceTasks(project.id, tasksData)
+          if (!writeSuccess) {
+            console.error(`Failed to write initial tasks.json for project ${project.id}`)
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error during workspace setup for project ${project.id}:`, error)
+      // Continue - project still created, workspace setup can be retried
+    }
+  }
+
+  return project
 })
 
 ipcMain.handle('project:update', (_event, id: string, updates) => {
@@ -53,6 +106,44 @@ ipcMain.handle('project:update', (_event, id: string, updates) => {
 
 ipcMain.handle('project:delete', (_event, id: string) => {
   return stateManager.deleteProject(id)
+})
+
+// Sync tasks from StateManager to workspace tasks.json
+ipcMain.handle('project:syncTasks', (_event, projectId: string) => {
+  const project = stateManager.getProject(projectId)
+  if (!project) {
+    return { success: false, error: 'Project not found' }
+  }
+
+  // Build the workspace tasks data structure
+  const tasksData: WorkspaceTasksData = {
+    project: {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      productBrief: project.productBrief,
+      solutionBrief: project.solutionBrief
+    },
+    tasks: project.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      acceptanceCriteria: task.acceptanceCriteria,
+      priority: task.priority,
+      status: task.status,
+      attempts: task.attempts,
+      startedAt: task.startedAt || null,
+      verifyingAt: task.verifyingAt || null,
+      completedAt: task.completedAt || null
+    }))
+  }
+
+  const success = stateManager.writeWorkspaceTasks(projectId, tasksData)
+  if (!success) {
+    return { success: false, error: 'Failed to write tasks.json - workspace may not exist' }
+  }
+
+  return { success: true }
 })
 
 // Task operations

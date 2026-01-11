@@ -162,6 +162,7 @@ export interface ElectronAPI {
   createProject: (project: CreateProjectInput) => Promise<Project>
   updateProject: (id: string, updates: UpdateProjectInput) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
+  syncTasks: (projectId: string) => Promise<{ success: boolean; error?: string }>
   // Task operations
   createTask: (projectId: string, task: CreateTaskInput) => Promise<Task>
   updateTask: (projectId: string, taskId: string, updates: UpdateTaskInput) => Promise<Task>
