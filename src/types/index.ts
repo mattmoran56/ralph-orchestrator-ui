@@ -124,6 +124,7 @@ export interface UpdateProjectInput {
   solutionBrief?: string
   baseBranch?: string
   status?: ProjectStatus
+  maxIterations?: number
 }
 
 export interface UpdateTaskInput {

@@ -19,6 +19,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const [name, setName] = useState(project?.name || '')
   const [baseBranch, setBaseBranch] = useState(project?.baseBranch || '')
   const [description, setDescription] = useState(project?.description || '')
+  const [maxIterations, setMaxIterations] = useState(project?.maxIterations ?? 50)
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -31,12 +32,13 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
       setName(project.name)
       setBaseBranch(project.baseBranch)
       setDescription(project.description)
+      setMaxIterations(project.maxIterations ?? 50)
     }
   }, [project])
 
   // Auto-save with debounce
   const saveChanges = useCallback(
-    (updates: { name?: string; baseBranch?: string; description?: string }) => {
+    (updates: { name?: string; baseBranch?: string; description?: string; maxIterations?: number }) => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -212,10 +214,41 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             />
           </div>
 
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Max Iterations
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={maxIterations}
+              onChange={(e) => {
+                const value = parseInt(e.target.value, 10)
+                if (!isNaN(value) && value >= 1 && value <= 1000) {
+                  setMaxIterations(value)
+                  saveChanges({ maxIterations: value })
+                } else if (e.target.value === '') {
+                  setMaxIterations(50)
+                  saveChanges({ maxIterations: 50 })
+                }
+              }}
+              className="input text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Maximum loop iterations before pausing (default: 50)
+            </p>
+          </div>
+
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span className={`status-badge ${project.status.replace('_', '-')}`}>
               {project.status}
             </span>
+            {project.status === 'running' && (
+              <span className="text-ralph-600 dark:text-ralph-400 font-medium">
+                Iteration {project.currentIteration} of {project.maxIterations}
+              </span>
+            )}
             <span>Working branch: {project.workingBranch || 'Not set'}</span>
           </div>
         </div>
