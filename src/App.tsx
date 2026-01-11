@@ -65,22 +65,23 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      {/* Title bar drag region for macOS */}
-      <div className="h-8 bg-gray-100 dark:bg-gray-800 draggable flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-          Ralph Orchestrator
-        </span>
-      </div>
+    <div className="h-screen flex bg-gray-50 dark:bg-gray-900">
+      {/* Left Sidebar - Full height including title bar */}
+      <aside className="w-64 bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+        <ProjectList
+          isSettingsSelected={showSettings}
+          onSettingsClick={handleSettingsClick}
+        />
+      </aside>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Project List */}
-        <aside className="w-72 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-          <ProjectList
-            isSettingsSelected={showSettings}
-            onSettingsClick={handleSettingsClick}
-          />
-        </aside>
+      {/* Main area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Title bar drag region for macOS */}
+        <div className="h-8 bg-white dark:bg-gray-800 draggable flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+            Ralph Orchestrator
+          </span>
+        </div>
 
         {/* Main content */}
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -93,7 +94,7 @@ function App() {
               onSettingsClick={handleProjectSettingsClick}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-800">
               <div className="text-center">
                 <h2 className="text-xl font-medium text-gray-500 dark:text-gray-400">
                   No project selected
