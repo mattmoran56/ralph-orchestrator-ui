@@ -107,6 +107,60 @@
   .log-timestamp {
     @apply text-gray-500;
   }
+
+  /* Markdown Editor (Tiptap) styles */
+  .markdown-editor {
+    @apply h-full;
+  }
+
+  .markdown-editor .tiptap {
+    @apply h-full focus:outline-none;
+  }
+
+  .markdown-editor .tiptap p {
+    @apply my-1 text-sm text-gray-700 dark:text-gray-300;
+  }
+
+  .markdown-editor .tiptap h1 {
+    @apply text-xl font-bold text-gray-900 dark:text-gray-100 my-2;
+  }
+
+  .markdown-editor .tiptap h2 {
+    @apply text-lg font-semibold text-gray-900 dark:text-gray-100 my-2;
+  }
+
+  .markdown-editor .tiptap h3 {
+    @apply text-base font-medium text-gray-900 dark:text-gray-100 my-1;
+  }
+
+  .markdown-editor .tiptap ul {
+    @apply list-disc list-inside my-1 pl-2;
+  }
+
+  .markdown-editor .tiptap li {
+    @apply text-sm text-gray-700 dark:text-gray-300;
+  }
+
+  .markdown-editor .tiptap li p {
+    @apply inline;
+  }
+
+  .markdown-editor .tiptap strong {
+    @apply font-bold;
+  }
+
+  .markdown-editor .tiptap em {
+    @apply italic;
+  }
+
+  .markdown-editor .tiptap code {
+    @apply bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-sm font-mono;
+  }
+
+  .markdown-editor .tiptap.is-editor-empty:first-child::before {
+    @apply text-gray-400 dark:text-gray-500 float-left h-0 pointer-events-none;
+    content: attr(data-placeholder);
+  }
 }
 
 /* Scrollbar styles */

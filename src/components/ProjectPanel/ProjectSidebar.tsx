@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import MDEditor from '@uiw/react-md-editor'
+import { MarkdownEditor } from '../Editor/MarkdownEditor'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronProjects } from '../../hooks/useElectronSync'
 
@@ -175,30 +175,20 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
         </div>
 
         {/* Description with markdown editor */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 pt-4 pb-2">
+        <div className="flex-1 flex flex-col overflow-hidden px-4">
+          <div className="pt-4 pb-2">
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
               Description
             </label>
           </div>
-          <div className="flex-1 px-4 pb-4 overflow-auto" data-color-mode="light">
-            <MDEditor
+          <div className="flex-1 pb-4 overflow-auto">
+            <MarkdownEditor
               value={description}
               onChange={(value) => {
-                setDescription(value || '')
-                saveChanges({ description: value || '' })
+                setDescription(value)
+                saveChanges({ description: value })
               }}
-              preview="live"
-              hideToolbar
-              visibleDragbar={false}
-              height="100%"
-              style={{
-                backgroundColor: 'transparent',
-                minHeight: '100%'
-              }}
-              textareaProps={{
-                placeholder: 'Add a description for this project...\n\nSupports **markdown** formatting.'
-              }}
+              placeholder="Add a description for this project... Type # for headings, - for lists"
             />
           </div>
         </div>

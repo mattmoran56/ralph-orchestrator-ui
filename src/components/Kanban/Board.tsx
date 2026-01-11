@@ -54,16 +54,9 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {project.name}
-            </h1>
-            {project.description && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 max-w-md">
-                {project.description}
-              </p>
-            )}
-          </div>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            {project.name}
+          </h1>
           <div className="flex items-center gap-3">
             <span className={`status-badge ${project.status.replace('_', '-')}`}>
               {project.status}
