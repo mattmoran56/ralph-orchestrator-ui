@@ -131,7 +131,6 @@ function NewProjectForm({
   onSubmit: (input: { name: string; description: string; productBrief: string; solutionBrief: string; repoUrl: string; baseBranch: string }) => void
 }) {
   const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
 
@@ -141,7 +140,7 @@ function NewProjectForm({
 
     onSubmit({
       name: name.trim(),
-      description: description.trim(),
+      description: '', // Description is edited in the project sidebar
       productBrief: '',
       solutionBrief: '',
       repoUrl: repoUrl.trim(),
@@ -165,16 +164,6 @@ function NewProjectForm({
               className="input"
               placeholder="My Project"
               autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="input"
-              placeholder="Brief description"
             />
           </div>
           <div>

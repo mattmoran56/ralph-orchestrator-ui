@@ -1,18 +1,38 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ProjectList } from './components/ProjectPanel/ProjectList'
 import { KanbanBoard } from './components/Kanban/Board'
 import { TaskDetail } from './components/TaskPanel/TaskDetail'
 import { SettingsPanel } from './components/Settings/SettingsPanel'
+import { ProjectSidebar } from './components/ProjectPanel/ProjectSidebar'
 import { useProjectStore } from './stores/projectStore'
 import { useElectronSync } from './hooks/useElectronSync'
+
+// Hook to get previous value
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T>()
+  useEffect(() => {
+    ref.current = value
+  }, [value])
+  return ref.current
+}
 
 function App() {
   // Initialize Electron sync
   useElectronSync()
 
-  const { selectedProjectId, selectedTaskId, isLoading } = useProjectStore()
+  const { selectedProjectId, selectedTaskId, isLoading
+  } = useProjectStore()
   const [showTaskDetail, setShowTaskDetail] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showProjectSidebar, setShowProjectSidebar] = useState(false)
+
+  // Show project sidebar when a new project is selected
+  const prevProjectId = usePrevious(selectedProjectId)
+  useEffect(() => {
+    if (selectedProjectId && selectedProjectId !== prevProjectId) {
+      setShowProjectSidebar(true)
+    }
+  }, [selectedProjectId, prevProjectId])
 
   if (isLoading) {
     return (
@@ -60,6 +80,7 @@ function App() {
                 useProjectStore.setState({ selectedTaskId: taskId })
                 setShowTaskDetail(true)
               }}
+              onSettingsClick={() => setShowProjectSidebar(true)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
@@ -89,6 +110,14 @@ function App() {
 
       {/* Settings Panel */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      {/* Project Sidebar */}
+      {showProjectSidebar && selectedProjectId && (
+        <ProjectSidebar
+          projectId={selectedProjectId}
+          onClose={() => setShowProjectSidebar(false)}
+        />
+      )}
     </div>
   )
 }
