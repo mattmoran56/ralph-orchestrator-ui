@@ -30,6 +30,10 @@ const api = {
   getOrchestratorStatus: () => ipcRenderer.invoke('orchestrator:status'),
   isClaudeAvailable: () => ipcRenderer.invoke('claude:available'),
 
+  // GitHub operations
+  getGitHubAuthStatus: () => ipcRenderer.invoke('github:authStatus'),
+  loginToGitHub: () => ipcRenderer.invoke('github:login'),
+
   // Logs
   getTaskLogs: (projectId: string, taskId: string) =>
     ipcRenderer.invoke('logs:get', projectId, taskId),

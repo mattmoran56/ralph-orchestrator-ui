@@ -91,6 +91,14 @@ export interface UpdateTaskInput {
   completedAt?: string
 }
 
+// GitHub auth status
+export interface GitHubAuthStatus {
+  installed: boolean
+  authenticated: boolean
+  error?: string
+  output?: string
+}
+
 // Electron API types
 export interface ElectronAPI {
   getPaths: () => Promise<{ data: string; workspaces: string; logs: string }>
@@ -107,6 +115,9 @@ export interface ElectronAPI {
   stopProject: (projectId: string) => Promise<void>
   pauseProject: (projectId: string) => Promise<void>
   getTaskLogs: (projectId: string, taskId: string) => Promise<string>
+  isClaudeAvailable: () => Promise<boolean>
+  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
+  loginToGitHub: () => Promise<{ success: boolean; error?: string }>
   onStateChange: (callback: (state: AppState) => void) => () => void
   onLogUpdate: (callback: (data: { projectId: string; taskId: string; log: string }) => void) => () => void
 }

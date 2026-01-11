@@ -159,6 +159,54 @@ ipcMain.handle('claude:available', () => {
   return processManager.isClaudeAvailable()
 })
 
+// GitHub CLI operations
+ipcMain.handle('github:authStatus', () => {
+  const { execSync } = require('child_process')
+  try {
+    // Check if gh CLI is installed
+    execSync('which gh', { stdio: 'pipe' })
+  } catch {
+    return { installed: false, authenticated: false, error: 'GitHub CLI (gh) is not installed' }
+  }
+
+  try {
+    // Check auth status
+    const output = execSync('gh auth status', { stdio: 'pipe', encoding: 'utf-8' })
+    return { installed: true, authenticated: true, output }
+  } catch (error) {
+    const err = error as { stderr?: string }
+    return {
+      installed: true,
+      authenticated: false,
+      error: err.stderr || 'Not authenticated with GitHub CLI'
+    }
+  }
+})
+
+ipcMain.handle('github:login', async () => {
+  const { spawn } = require('child_process')
+
+  return new Promise((resolve) => {
+    // Open gh auth login in a new terminal window
+    const proc = spawn('gh', ['auth', 'login', '--web'], {
+      stdio: 'inherit',
+      shell: true
+    })
+
+    proc.on('close', (code: number) => {
+      if (code === 0) {
+        resolve({ success: true })
+      } else {
+        resolve({ success: false, error: 'Authentication failed or was cancelled' })
+      }
+    })
+
+    proc.on('error', (err: Error) => {
+      resolve({ success: false, error: err.message })
+    })
+  })
+})
+
 // Ensure directories exist
 const paths = stateManager.getDataPaths()
 for (const dir of [paths.data, paths.workspaces, paths.logs]) {

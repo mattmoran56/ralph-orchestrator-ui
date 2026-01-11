@@ -452,6 +452,9 @@ ${otherTasks || 'No other tasks.'}
       if (!basePushResult.success) {
         this.log(project.id, `Failed to push base branch: ${basePushResult.error}`)
         stateManager.updateProject(project.id, { status: 'failed' })
+        this.log(project.id, 'Cleaning up workspace...')
+        repoManager.cleanupWorkspace(project.id)
+        this.activeProjects.delete(project.id)
         return
       }
       this.log(project.id, 'Base branch pushed to remote')
@@ -463,6 +466,9 @@ ${otherTasks || 'No other tasks.'}
     if (!pushResult.success) {
       this.log(project.id, `Failed to push: ${pushResult.error}`)
       stateManager.updateProject(project.id, { status: 'failed' })
+      this.log(project.id, 'Cleaning up workspace...')
+      repoManager.cleanupWorkspace(project.id)
+      this.activeProjects.delete(project.id)
       return
     }
 
@@ -488,12 +494,13 @@ ${otherTasks || 'No other tasks.'}
 
     if (prResult.success) {
       this.log(project.id, `PR created: ${prResult.output}`)
+      // Update project status to completed
+      stateManager.updateProject(project.id, { status: 'completed' })
     } else {
       this.log(project.id, `Failed to create PR: ${prResult.error}`)
+      // Mark project as failed if PR creation fails - tasks remain done
+      stateManager.updateProject(project.id, { status: 'failed' })
     }
-
-    // Update project status
-    stateManager.updateProject(project.id, { status: 'completed' })
 
     // Clean up workspace
     this.log(project.id, 'Cleaning up workspace...')
