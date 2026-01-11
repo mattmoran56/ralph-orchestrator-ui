@@ -75,9 +75,9 @@ class RepoManager {
   }
 
   /**
-   * Clone a repository for a project
+   * Clone a repository for a project (clones default branch)
    */
-  async cloneRepo(projectId: string, repoUrl: string, baseBranch: string): Promise<GitResult> {
+  async cloneRepo(projectId: string, repoUrl: string): Promise<GitResult> {
     const workspacePath = this.getProjectWorkspace(projectId)
     const repoPath = this.getRepoPath(projectId, repoUrl)
 
@@ -89,17 +89,16 @@ class RepoManager {
     // Check if repo already exists
     if (existsSync(repoPath)) {
       // Fetch latest changes instead
-      const fetchResult = this.execGit('git fetch origin', repoPath)
+      const fetchResult = this.execGit('git fetch origin --prune', repoPath)
       if (!fetchResult.success) {
         return fetchResult
       }
       return { success: true, output: `Repository already exists at ${repoPath}. Fetched latest changes.` }
     }
 
-    // Clone the repository
-    const cloneCommand = `git clone --branch ${baseBranch} ${repoUrl}`
+    // Clone the repository (default branch)
     return new Promise((resolve) => {
-      const proc = spawn('git', ['clone', '--branch', baseBranch, repoUrl], {
+      const proc = spawn('git', ['clone', repoUrl], {
         cwd: workspacePath,
         stdio: ['pipe', 'pipe', 'pipe']
       })
@@ -128,6 +127,39 @@ class RepoManager {
         resolve({ success: false, output: '', error: err.message })
       })
     })
+  }
+
+  /**
+   * Checkout a branch, creating it if it doesn't exist
+   */
+  checkoutOrCreateBranch(projectId: string, repoUrl: string, branchName: string): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    // First, try to checkout the branch if it exists locally
+    const checkoutLocal = this.execGit(`git checkout ${branchName}`, repoPath)
+    if (checkoutLocal.success) {
+      // Pull latest if tracking remote
+      this.execGit('git pull origin --ff-only', repoPath)
+      return { success: true, output: `Switched to existing branch ${branchName}` }
+    }
+
+    // Try to checkout from remote
+    const checkoutRemote = this.execGit(`git checkout -b ${branchName} origin/${branchName}`, repoPath)
+    if (checkoutRemote.success) {
+      return { success: true, output: `Checked out remote branch ${branchName}` }
+    }
+
+    // Branch doesn't exist locally or remotely, create it from current HEAD
+    const createBranch = this.execGit(`git checkout -b ${branchName}`, repoPath)
+    if (createBranch.success) {
+      return { success: true, output: `Created new branch ${branchName}` }
+    }
+
+    return createBranch
   }
 
   /**

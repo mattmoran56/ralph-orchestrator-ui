@@ -131,32 +131,46 @@ class Orchestrator {
   private async setupRepository(project: Project): Promise<{ success: boolean; error?: string }> {
     const repoManager = getRepoManager()
 
-    // Clone if needed
+    // Step 1: Clone the repository (uses default branch)
     if (!repoManager.workspaceExists(project.id, project.repoUrl)) {
       this.log(project.id, `Cloning repository: ${project.repoUrl}`)
-      const cloneResult = await repoManager.cloneRepo(
-        project.id,
-        project.repoUrl,
-        project.baseBranch
-      )
+      const cloneResult = await repoManager.cloneRepo(project.id, project.repoUrl)
 
       if (!cloneResult.success) {
         return { success: false, error: cloneResult.error }
       }
+      this.log(project.id, 'Repository cloned successfully')
+    } else {
+      this.log(project.id, 'Repository already exists, fetching latest...')
+      await repoManager.cloneRepo(project.id, project.repoUrl) // This will fetch if exists
     }
 
-    // Create/checkout working branch
-    this.log(project.id, `Setting up branch: ${project.workingBranch}`)
-    const branchResult = repoManager.createBranch(
+    // Step 2: Checkout or create the base branch
+    this.log(project.id, `Setting up base branch: ${project.baseBranch}`)
+    const baseBranchResult = repoManager.checkoutOrCreateBranch(
+      project.id,
+      project.repoUrl,
+      project.baseBranch
+    )
+
+    if (!baseBranchResult.success) {
+      return { success: false, error: baseBranchResult.error }
+    }
+    this.log(project.id, baseBranchResult.output)
+
+    // Step 3: Create/checkout the working branch from base branch
+    this.log(project.id, `Setting up working branch: ${project.workingBranch}`)
+    const workingBranchResult = repoManager.createBranch(
       project.id,
       project.repoUrl,
       project.workingBranch,
       project.baseBranch
     )
 
-    if (!branchResult.success) {
-      return { success: false, error: branchResult.error }
+    if (!workingBranchResult.success) {
+      return { success: false, error: workingBranchResult.error }
     }
+    this.log(project.id, workingBranchResult.output)
 
     return { success: true }
   }
