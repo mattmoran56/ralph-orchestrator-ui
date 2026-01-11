@@ -295,6 +295,20 @@ class RepoManager {
   }
 
   /**
+   * Get commits in current branch that are not in the base branch
+   */
+  getDiffFromBase(projectId: string, repoUrl: string, baseBranch: string): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    // Get list of commits in current branch but not in base branch
+    return this.execGit(`git log origin/${baseBranch}..HEAD --oneline`, repoPath)
+  }
+
+  /**
    * Get current branch name
    */
   getCurrentBranch(projectId: string, repoUrl: string): GitResult {
