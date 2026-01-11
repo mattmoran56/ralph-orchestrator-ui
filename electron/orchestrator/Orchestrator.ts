@@ -126,6 +126,14 @@ class Orchestrator {
       stateManager.updateProject(projectId, { currentIteration: newIteration })
       this.log(projectId, `Starting iteration ${newIteration} of ${project.maxIterations}`)
 
+      // Loop log: iteration start
+      stateManager.addLoopLog(
+        projectId,
+        newIteration,
+        'task_selection',
+        `Starting iteration ${newIteration} of ${project.maxIterations}`
+      )
+
       // Check if max iterations exceeded
       if (newIteration > project.maxIterations) {
         this.log(projectId, `Max iterations (${project.maxIterations}) reached, pausing project`)
@@ -151,7 +159,7 @@ class Orchestrator {
       }
 
       // Work on tasks - Claude will choose which one
-      await this.workOnTask(project, fallbackTask, workingDirectory)
+      await this.workOnTask(project, fallbackTask, workingDirectory, newIteration)
 
       // Small delay between tasks
       await this.delay(2000)
@@ -261,7 +269,8 @@ class Orchestrator {
   private async workOnTask(
     project: Project,
     fallbackTask: Task,
-    workingDirectory: string
+    workingDirectory: string,
+    iteration: number
   ): Promise<void> {
     const stateManager = getStateManager()
     const processManager = getProcessManager()
@@ -275,6 +284,15 @@ class Orchestrator {
 
     // Get log file path using fallback task ID (will be renamed if different task selected)
     const logFilePath = processManager.getLogFilePath(project.id, fallbackTask.id)
+
+    // Loop log: execution starting
+    stateManager.addLoopLog(
+      project.id,
+      iteration,
+      'execution',
+      'Running Claude Code...',
+      fallbackTask.id
+    )
 
     // Start Claude process
     const processId = await processManager.startProcess({
@@ -304,10 +322,26 @@ class Orchestrator {
 
     if (task) {
       this.log(project.id, `Claude selected task: ${task.title}`)
+      // Loop log: task selection
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'task_selection',
+        `Selected task: ${task.title}`,
+        task.id
+      )
     } else {
       this.log(project.id, `Warning: Could not parse task selection from output, using fallback task`)
       // Use the fallback task but get fresh version from state
       task = refreshedProject.tasks.find((t) => t.id === fallbackTask.id) || fallbackTask
+      // Loop log: fallback task selection
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'task_selection',
+        `Using fallback task: ${task.title} (could not parse selection)`,
+        task.id
+      )
     }
 
     orchestratorState.currentTaskId = task.id
@@ -336,9 +370,25 @@ class Orchestrator {
 
     this.log(project.id, `Working on task: ${task.title}`)
 
+    // Helper to truncate output for details
+    const truncateOutput = (output: string, maxLength: number = 500): string => {
+      if (output.length <= maxLength) return output
+      return output.substring(0, maxLength) + '... [truncated]'
+    }
+
     // Handle result
     if (result.taskBlocked) {
       this.log(project.id, `Task blocked: ${result.blockedReason}`)
+
+      // Loop log: execution complete with TASK_BLOCKED
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: TASK_BLOCKED`,
+        task.id,
+        truncateOutput(result.output)
+      )
 
       // Check max attempts
       const settings = stateManager.getSettings()
@@ -352,6 +402,16 @@ class Orchestrator {
           summary: `Blocked after ${task.attempts} attempts: ${result.blockedReason}`,
           success: false
         })
+
+        // Loop log: result - task blocked permanently
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          `Task blocked: ${result.blockedReason}`,
+          task.id,
+          `Max attempts (${settings.maxTaskAttempts}) reached`
+        )
       } else {
         // Keep in progress for retry
         stateManager.addTaskLog(project.id, task.id, {
@@ -359,6 +419,16 @@ class Orchestrator {
           summary: `Blocked (attempt ${task.attempts}): ${result.blockedReason}`,
           success: false
         })
+
+        // Loop log: result - task blocked, will retry
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          `Task blocked: ${result.blockedReason}`,
+          task.id,
+          `Will retry (attempt ${task.attempts} of ${settings.maxTaskAttempts})`
+        )
       }
       return
     }
@@ -366,11 +436,30 @@ class Orchestrator {
     if (result.taskComplete) {
       this.log(project.id, `Task reports complete, verifying...`)
 
+      // Loop log: execution complete with TASK_COMPLETE
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: TASK_COMPLETE`,
+        task.id,
+        truncateOutput(result.output)
+      )
+
       // Move to verifying
       stateManager.updateTask(project.id, task.id, {
         status: 'verifying',
         verifyingAt: new Date().toISOString()
       })
+
+      // Loop log: verification starting
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'verification',
+        'Running verification...',
+        task.id
+      )
 
       // Run verification
       const verificationResult = await verifier.verifyTask(
@@ -382,6 +471,15 @@ class Orchestrator {
       if (verificationResult.passed) {
         this.log(project.id, `Task verified successfully!`)
 
+        // Loop log: verification passed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'verification',
+          'Verification PASSED',
+          task.id
+        )
+
         // Mark as done
         stateManager.updateTask(project.id, task.id, {
           status: 'done',
@@ -392,6 +490,15 @@ class Orchestrator {
           summary: 'Task completed and verified',
           success: true
         })
+
+        // Loop log: result - task completed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          'Task completed',
+          task.id
+        )
 
         // Commit changes
         const repoManager = getRepoManager()
@@ -408,6 +515,16 @@ class Orchestrator {
       } else {
         this.log(project.id, `Verification failed: ${verificationResult.failureReasons.join(', ')}`)
 
+        // Loop log: verification failed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'verification',
+          'Verification FAILED',
+          task.id,
+          verificationResult.failureReasons.join(', ')
+        )
+
         // Check max attempts
         const settings = stateManager.getSettings()
         if (task.attempts >= settings.maxTaskAttempts) {
@@ -420,6 +537,16 @@ class Orchestrator {
             summary: `Failed verification after ${task.attempts} attempts`,
             success: false
           })
+
+          // Loop log: result - task blocked due to verification failures
+          stateManager.addLoopLog(
+            project.id,
+            iteration,
+            'result',
+            `Task blocked: verification failed`,
+            task.id,
+            `Max attempts (${settings.maxTaskAttempts}) reached`
+          )
         } else {
           // Move back to in_progress for retry (don't reset startedAt)
           stateManager.updateTask(project.id, task.id, { status: 'in_progress' })
@@ -428,15 +555,45 @@ class Orchestrator {
             summary: `Verification failed (attempt ${task.attempts}): ${verificationResult.failureReasons.join(', ')}`,
             success: false
           })
+
+          // Loop log: result - verification failed, will retry
+          stateManager.addLoopLog(
+            project.id,
+            iteration,
+            'result',
+            'Verification failed, will retry',
+            task.id,
+            `Attempt ${task.attempts} of ${settings.maxTaskAttempts}`
+          )
         }
       }
     } else {
       // Task didn't complete, add log and continue
+
+      // Loop log: execution ended without signal
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: No completion signal`,
+        task.id,
+        truncateOutput(result.output)
+      )
+
       stateManager.addTaskLog(project.id, task.id, {
         filePath: logFilePath,
         summary: `Attempt ${task.attempts} - incomplete`,
         success: false
       })
+
+      // Loop log: result - incomplete
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'result',
+        'Task incomplete, will continue',
+        task.id
+      )
     }
 
     orchestratorState.currentProcessId = null
