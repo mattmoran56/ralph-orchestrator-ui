@@ -127,6 +127,9 @@ class Orchestrator {
     const workingDirectory = repoManager.getRepoPath(projectId, repoUrl)
     this.log(projectId, `Working directory: ${workingDirectory}`)
 
+    // Start watching workspace files for real-time UI updates
+    stateManager.watchWorkspace(projectId)
+
     // Main loop
     while (orchestratorState.status === 'running') {
       // Refresh project state
@@ -176,6 +179,9 @@ class Orchestrator {
       // Small delay between tasks
       await this.delay(2000)
     }
+
+    // Stop watching workspace files when loop ends
+    stateManager.unwatchWorkspace(projectId)
   }
 
   /**
@@ -904,6 +910,9 @@ You must choose ONE task to work on and complete it. Follow these steps:
   private handleError(projectId: string, error: Error): void {
     const stateManager = getStateManager()
     stateManager.updateProject(projectId, { status: 'failed' })
+
+    // Stop watching workspace files on error
+    stateManager.unwatchWorkspace(projectId)
 
     const orchestratorState = this.activeProjects.get(projectId)
     if (orchestratorState) {

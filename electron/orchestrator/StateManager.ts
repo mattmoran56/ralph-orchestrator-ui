@@ -3,6 +3,14 @@ import { join, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, watch, FSWatcher } from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 
+// Workspace watcher state for a single project
+interface WorkspaceWatcher {
+  tasksWatcher: FSWatcher | null
+  logsWatcher: FSWatcher | null
+  tasksDebounceTimer: ReturnType<typeof setTimeout> | null
+  logsDebounceTimer: ReturnType<typeof setTimeout> | null
+}
+
 // Types
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
@@ -145,6 +153,8 @@ class StateManager {
   private state: AppState
   private watcher: FSWatcher | null = null
   private saveTimeout: ReturnType<typeof setTimeout> | null = null
+  private workspaceWatchers: Map<string, WorkspaceWatcher> = new Map()
+  private static DEBOUNCE_MS = 100
 
   constructor() {
     this.dataPath = join(app.getPath('userData'), 'data')
@@ -727,6 +737,234 @@ class StateManager {
     }
   }
 
+  // Workspace file watching methods
+
+  /**
+   * Get the raw path to a project's workspace .ralph folder (without checking if it exists)
+   * Used internally for file watching setup
+   */
+  private getRawWorkspaceRalphPath(projectId: string): string | null {
+    const project = this.getProject(projectId)
+    if (!project) return null
+
+    const repository = this.getRepository(project.repositoryId)
+    if (!repository) return null
+
+    const workspacesPath = this.state.settings.workspacesPath || join(app.getPath('userData'), 'workspaces')
+    const repoName = this.extractRepoName(repository.url)
+    return join(workspacesPath, projectId, repoName, '.ralph')
+  }
+
+  /**
+   * Start watching workspace .ralph files for a project
+   * Called when a project starts running
+   */
+  watchWorkspace(projectId: string): void {
+    // Don't start watching if already watching
+    if (this.workspaceWatchers.has(projectId)) {
+      console.log(`[StateManager] Already watching workspace for project ${projectId}`)
+      return
+    }
+
+    const ralphPath = this.getRawWorkspaceRalphPath(projectId)
+    if (!ralphPath) {
+      console.error(`[StateManager] Cannot watch workspace - project or repository not found: ${projectId}`)
+      return
+    }
+
+    const tasksPath = join(ralphPath, 'tasks.json')
+    const logsPath = join(ralphPath, 'logs.json')
+
+    const watcherState: WorkspaceWatcher = {
+      tasksWatcher: null,
+      logsWatcher: null,
+      tasksDebounceTimer: null,
+      logsDebounceTimer: null
+    }
+
+    // Watch tasks.json if it exists
+    if (existsSync(tasksPath)) {
+      try {
+        watcherState.tasksWatcher = watch(tasksPath, (eventType) => {
+          if (eventType === 'change') {
+            // Debounce the file change event
+            if (watcherState.tasksDebounceTimer) {
+              clearTimeout(watcherState.tasksDebounceTimer)
+            }
+            watcherState.tasksDebounceTimer = setTimeout(() => {
+              this.handleWorkspaceTasksChange(projectId, tasksPath)
+            }, StateManager.DEBOUNCE_MS)
+          }
+        })
+        console.log(`[StateManager] Started watching tasks.json for project ${projectId}`)
+      } catch (error) {
+        console.error(`[StateManager] Failed to watch tasks.json for project ${projectId}:`, error)
+      }
+    } else {
+      console.log(`[StateManager] tasks.json doesn't exist yet for project ${projectId}, skipping watch`)
+    }
+
+    // Watch logs.json if it exists (or the directory to detect creation)
+    if (existsSync(logsPath)) {
+      try {
+        watcherState.logsWatcher = watch(logsPath, (eventType) => {
+          if (eventType === 'change') {
+            // Debounce the file change event
+            if (watcherState.logsDebounceTimer) {
+              clearTimeout(watcherState.logsDebounceTimer)
+            }
+            watcherState.logsDebounceTimer = setTimeout(() => {
+              this.handleWorkspaceLogsChange(projectId, logsPath)
+            }, StateManager.DEBOUNCE_MS)
+          }
+        })
+        console.log(`[StateManager] Started watching logs.json for project ${projectId}`)
+      } catch (error) {
+        console.error(`[StateManager] Failed to watch logs.json for project ${projectId}:`, error)
+      }
+    } else {
+      console.log(`[StateManager] logs.json doesn't exist yet for project ${projectId}, skipping watch`)
+    }
+
+    this.workspaceWatchers.set(projectId, watcherState)
+  }
+
+  /**
+   * Stop watching workspace .ralph files for a project
+   * Called when a project stops, completes, or is paused
+   */
+  unwatchWorkspace(projectId: string): void {
+    const watcherState = this.workspaceWatchers.get(projectId)
+    if (!watcherState) {
+      return
+    }
+
+    // Clear debounce timers
+    if (watcherState.tasksDebounceTimer) {
+      clearTimeout(watcherState.tasksDebounceTimer)
+    }
+    if (watcherState.logsDebounceTimer) {
+      clearTimeout(watcherState.logsDebounceTimer)
+    }
+
+    // Close watchers
+    if (watcherState.tasksWatcher) {
+      watcherState.tasksWatcher.close()
+    }
+    if (watcherState.logsWatcher) {
+      watcherState.logsWatcher.close()
+    }
+
+    this.workspaceWatchers.delete(projectId)
+    console.log(`[StateManager] Stopped watching workspace for project ${projectId}`)
+  }
+
+  /**
+   * Handle changes to workspace tasks.json
+   * Syncs task status/data from workspace file to StateManager
+   */
+  private handleWorkspaceTasksChange(projectId: string, tasksPath: string): void {
+    try {
+      if (!existsSync(tasksPath)) {
+        console.log(`[StateManager] tasks.json was deleted for project ${projectId}`)
+        return
+      }
+
+      const content = readFileSync(tasksPath, 'utf-8')
+      const workspaceData = JSON.parse(content) as WorkspaceTasksData
+
+      const project = this.getProject(projectId)
+      if (!project) {
+        console.error(`[StateManager] Project not found while handling tasks change: ${projectId}`)
+        return
+      }
+
+      // Sync each task from workspace to StateManager
+      let hasChanges = false
+      for (const workspaceTask of workspaceData.tasks) {
+        const existingTask = project.tasks.find((t) => t.id === workspaceTask.id)
+        if (!existingTask) {
+          // Task doesn't exist in StateManager - could be created by Claude
+          // For now, log this but don't auto-add (could be a future feature)
+          console.log(`[StateManager] New task in workspace: ${workspaceTask.id} - ${workspaceTask.title}`)
+          continue
+        }
+
+        // Check if status or other fields changed
+        const statusChanged = existingTask.status !== workspaceTask.status
+        const attemptsChanged = existingTask.attempts !== workspaceTask.attempts
+
+        if (statusChanged || attemptsChanged) {
+          hasChanges = true
+          console.log(
+            `[StateManager] Task ${workspaceTask.id} changed: ` +
+            `status ${existingTask.status} -> ${workspaceTask.status}, ` +
+            `attempts ${existingTask.attempts} -> ${workspaceTask.attempts}`
+          )
+
+          // Update the task in StateManager
+          // Note: We update directly without calling saveState() yet to batch the save
+          const taskIndex = project.tasks.findIndex((t) => t.id === workspaceTask.id)
+          if (taskIndex !== -1) {
+            project.tasks[taskIndex] = {
+              ...project.tasks[taskIndex],
+              status: workspaceTask.status,
+              attempts: workspaceTask.attempts,
+              startedAt: workspaceTask.startedAt || project.tasks[taskIndex].startedAt,
+              verifyingAt: workspaceTask.verifyingAt || project.tasks[taskIndex].verifyingAt,
+              completedAt: workspaceTask.completedAt || project.tasks[taskIndex].completedAt,
+              updatedAt: new Date().toISOString()
+            }
+          }
+        }
+      }
+
+      if (hasChanges) {
+        project.updatedAt = new Date().toISOString()
+        this.saveState()
+        console.log(`[StateManager] Synced task changes from workspace for project ${projectId}`)
+      }
+    } catch (error) {
+      console.error(`[StateManager] Error handling workspace tasks change for project ${projectId}:`, error)
+    }
+  }
+
+  /**
+   * Handle changes to workspace logs.json
+   * Notifies renderers of new log entries
+   */
+  private handleWorkspaceLogsChange(projectId: string, logsPath: string): void {
+    try {
+      if (!existsSync(logsPath)) {
+        console.log(`[StateManager] logs.json was deleted for project ${projectId}`)
+        return
+      }
+
+      const content = readFileSync(logsPath, 'utf-8')
+      const logsData = JSON.parse(content) as WorkspaceLogsData
+
+      // Notify renderers that workspace logs have changed
+      // The renderer will re-fetch logs via IPC if needed
+      BrowserWindow.getAllWindows().forEach((window) => {
+        window.webContents.send('workspace:logsChanged', {
+          projectId,
+          entryCount: logsData.entries.length
+        })
+      })
+
+      console.log(`[StateManager] Workspace logs changed for project ${projectId}: ${logsData.entries.length} entries`)
+    } catch (error) {
+      console.error(`[StateManager] Error handling workspace logs change for project ${projectId}:`, error)
+    }
+  }
+
+  /**
+   * Check if workspace is being watched for a project
+   */
+  isWatchingWorkspace(projectId: string): boolean {
+    return this.workspaceWatchers.has(projectId)
+  }
+
   cleanup(): void {
     if (this.watcher) {
       this.watcher.close()
@@ -734,6 +972,10 @@ class StateManager {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout)
     }
+    // Clean up all workspace watchers
+    Array.from(this.workspaceWatchers.keys()).forEach((projectId) => {
+      this.unwatchWorkspace(projectId)
+    })
   }
 }
 
