@@ -241,12 +241,14 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
             <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
               Live Output
             </h4>
-            <div className="h-64 rounded-lg overflow-hidden">
-              <LogViewer
-                logContent={liveContent || 'Waiting for output...'}
-                isLive={true}
-              />
-            </div>
+            <LogViewer
+              logContent={liveContent || 'Waiting for output...'}
+              isLive={true}
+              resizable={true}
+              defaultHeight={400}
+              minHeight={200}
+              maxHeight={700}
+            />
           </div>
         )}
 
@@ -274,12 +276,14 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
               <div className="space-y-3">
                 {/* Log viewer for most recent log */}
                 {logContent && (
-                  <div className="h-48 rounded-lg overflow-hidden">
-                    <LogViewer
-                      logContent={logContent}
-                      title="Latest Log"
-                    />
-                  </div>
+                  <LogViewer
+                    logContent={logContent}
+                    title="Latest Log"
+                    resizable={true}
+                    defaultHeight={350}
+                    minHeight={150}
+                    maxHeight={600}
+                  />
                 )}
                 {loadingLogs && (
                   <div className="text-sm text-gray-500">Loading logs...</div>
