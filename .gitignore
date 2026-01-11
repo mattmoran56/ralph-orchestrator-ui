@@ -37,6 +37,3 @@ pids
 data/
 workspaces/
 logs/
-
-# Temporary files
-icon.png
