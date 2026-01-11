@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronTasks } from '../../hooks/useElectronSync'
+import { useLiveLog } from '../../hooks/useLiveLog'
+import { TaskTimer } from './TaskTimer'
+import { LogViewer } from './LogViewer'
 import type { Task } from '../../types'
 
 interface TaskDetailProps {
@@ -18,15 +21,28 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
   const [logContent, setLogContent] = useState<string>('')
   const [loadingLogs, setLoadingLogs] = useState(false)
 
-  // Load log content when showing logs
+  // Check if task is currently active (running)
+  const isTaskActive = task?.status === 'in_progress' || task?.status === 'verifying'
+
+  // Subscribe to live logs when task is active
+  const { liveContent } = useLiveLog(projectId, taskId, isTaskActive)
+
+  // Auto-show logs when task becomes active
   useEffect(() => {
-    if (showLogs && task && task.logs.length > 0) {
+    if (isTaskActive) {
+      setShowLogs(true)
+    }
+  }, [isTaskActive])
+
+  // Load log content from file when showing logs for completed tasks
+  useEffect(() => {
+    if (showLogs && task && !isTaskActive && task.logs.length > 0) {
       setLoadingLogs(true)
       getTaskLogs(projectId, taskId)
         .then((content) => setLogContent(content))
         .finally(() => setLoadingLogs(false))
     }
-  }, [showLogs, task, projectId, taskId, getTaskLogs])
+  }, [showLogs, task, projectId, taskId, getTaskLogs, isTaskActive])
 
   if (!task) {
     return (
@@ -70,6 +86,12 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
                   {task.status.replace('_', ' ')}
                 </span>
               </div>
+              {/* Task Timer */}
+              {task.startedAt && (
+                <div className="mt-2">
+                  <TaskTimer task={task} />
+                </div>
+              )}
               {task.description && (
                 <p className="mt-2 text-gray-600 dark:text-gray-400">
                   {task.description}
@@ -109,8 +131,23 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
               </div>
             </div>
 
-            {/* Logs Section */}
-            {task.logs.length > 0 && (
+            {/* Live Logs Section (when task is active) */}
+            {isTaskActive && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Live Output
+                </h4>
+                <div className="h-64 rounded-lg overflow-hidden">
+                  <LogViewer
+                    logContent={liveContent || 'Waiting for output...'}
+                    isLive={true}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Execution Logs Section (historical logs) */}
+            {task.logs.length > 0 && !isTaskActive && (
               <div>
                 <button
                   onClick={() => setShowLogs(!showLogs)}
@@ -127,47 +164,53 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
                       clipRule="evenodd"
                     />
                   </svg>
-                  Execution Logs
+                  Execution Logs ({task.logs.length})
                 </button>
                 {showLogs && (
-                  <div className="space-y-2">
-                    {task.logs.map((log, index) => (
-                      <div
-                        key={index}
-                        className={`p-3 rounded-lg border ${
-                          log.success
-                            ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
-                            : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500 dark:text-gray-400">
-                            {new Date(log.timestamp).toLocaleString()}
-                          </span>
-                          <span
-                            className={
-                              log.success
-                                ? 'text-green-600 dark:text-green-400'
-                                : 'text-red-600 dark:text-red-400'
-                            }
-                          >
-                            {log.success ? 'Success' : 'Failed'}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                          {log.summary}
-                        </p>
-                        <button
-                          onClick={() => {
-                            // TODO: Open log file in viewer
-                            console.log('View log:', log.filePath)
-                          }}
-                          className="mt-2 text-xs text-ralph-600 hover:text-ralph-700"
-                        >
-                          View full log
-                        </button>
+                  <div className="space-y-3">
+                    {/* Log viewer for most recent log */}
+                    {logContent && (
+                      <div className="h-48 rounded-lg overflow-hidden">
+                        <LogViewer
+                          logContent={logContent}
+                          title="Latest Log"
+                        />
                       </div>
-                    ))}
+                    )}
+                    {loadingLogs && (
+                      <div className="text-sm text-gray-500">Loading logs...</div>
+                    )}
+                    {/* Log summaries */}
+                    <div className="space-y-2">
+                      {task.logs.map((log, index) => (
+                        <div
+                          key={index}
+                          className={`p-3 rounded-lg border ${
+                            log.success
+                              ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
+                              : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500 dark:text-gray-400">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                            <span
+                              className={
+                                log.success
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : 'text-red-600 dark:text-red-400'
+                              }
+                            >
+                              {log.success ? 'Success' : 'Failed'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                            {log.summary}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

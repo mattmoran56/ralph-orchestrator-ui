@@ -1,8 +1,8 @@
-import { spawn, ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, createWriteStream, WriteStream } from 'fs'
 import { join } from 'path'
 import { BrowserWindow } from 'electron'
 import { getStateManager } from './StateManager'
+import * as pty from 'node-pty'
 
 export interface ClaudeProcessConfig {
   projectId: string
@@ -16,7 +16,7 @@ export interface ClaudeProcess {
   id: string
   projectId: string
   taskId: string
-  process: ChildProcess
+  ptyProcess: pty.IPty
   logStream: WriteStream
   output: string
   startTime: Date
@@ -97,25 +97,29 @@ class ProcessManager {
       '--permission-mode', 'dontAsk',
       '--allowedTools', 'Read,Write,Edit,Grep,Glob,Bash(git add:*),Bash(git commit:*),Bash(git status),Bash(npm:*),Bash(pnpm:*),Bash(yarn:*),Bash(node:*),Bash(npx:*)',
       '--disallowedTools', 'Bash(git push:*),Bash(gh:*)',
-      '--output-format', 'stream-json'
+      '--output-format', 'stream-json',
+      '--verbose'  // Required for stream-json with -p mode
     ]
 
-    const proc = spawn(this.claudeExecutable, args, {
+    // Use node-pty for proper TTY emulation (required for streaming output)
+    const ptyProcess = pty.spawn(this.claudeExecutable, args, {
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 30,
       cwd: config.workingDirectory,
-      stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        // Ensure color output is disabled for cleaner logs
+        // Disable color output for cleaner logs
         NO_COLOR: '1',
         FORCE_COLOR: '0'
-      }
+      } as { [key: string]: string }
     })
 
     const claudeProcess: ClaudeProcess = {
       id: processId,
       projectId: config.projectId,
       taskId: config.taskId,
-      process: proc,
+      ptyProcess,
       logStream,
       output: '',
       startTime: new Date(),
@@ -124,39 +128,25 @@ class ProcessManager {
 
     this.processes.set(processId, claudeProcess)
 
-    // Handle stdout
-    proc.stdout.on('data', (data: Buffer) => {
-      const text = data.toString()
-      claudeProcess.output += text
-      logStream.write(text)
+    // Handle PTY data (combined stdout/stderr)
+    ptyProcess.onData((data: string) => {
+      claudeProcess.output += data
+      logStream.write(data)
 
       // Send output to renderer for real-time display
       this.notifyRenderers('log:update', {
         projectId: config.projectId,
         taskId: config.taskId,
-        log: text
+        log: data
       })
     })
 
-    // Handle stderr
-    proc.stderr.on('data', (data: Buffer) => {
-      const text = data.toString()
-      claudeProcess.output += `[STDERR] ${text}`
-      logStream.write(`[STDERR] ${text}`)
-    })
-
-    // Handle process end
-    proc.on('close', (code) => {
-      claudeProcess.status = code === 0 ? 'completed' : 'failed'
+    // Handle process exit
+    ptyProcess.onExit(({ exitCode }) => {
+      claudeProcess.status = exitCode === 0 ? 'completed' : 'failed'
       logStream.write(`\n\n=== Process Ended ===\n`)
-      logStream.write(`Exit Code: ${code}\n`)
+      logStream.write(`Exit Code: ${exitCode}\n`)
       logStream.write(`Time: ${new Date().toISOString()}\n`)
-      logStream.end()
-    })
-
-    proc.on('error', (error) => {
-      claudeProcess.status = 'failed'
-      logStream.write(`\n\n=== Process Error ===\n${error.message}\n`)
       logStream.end()
     })
 
@@ -185,18 +175,9 @@ class ProcessManager {
         return
       }
 
-      claudeProcess.process.on('close', () => {
+      // Listen for PTY exit
+      claudeProcess.ptyProcess.onExit(() => {
         resolve(this.parseProcessResult(claudeProcess))
-      })
-
-      claudeProcess.process.on('error', () => {
-        resolve({
-          success: false,
-          output: claudeProcess.output,
-          taskComplete: false,
-          taskBlocked: true,
-          blockedReason: 'Process error'
-        })
       })
     })
   }
@@ -243,7 +224,7 @@ class ProcessManager {
       return false
     }
 
-    claudeProcess.process.kill('SIGTERM')
+    claudeProcess.ptyProcess.kill()
     claudeProcess.status = 'stopped'
     claudeProcess.logStream.write('\n\n=== Process Stopped by User ===\n')
     claudeProcess.logStream.end()

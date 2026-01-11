@@ -25,6 +25,10 @@ export interface Task {
   attempts: number
   createdAt: string
   updatedAt: string
+  // Timing fields for state transitions
+  startedAt?: string
+  verifyingAt?: string
+  completedAt?: string
 }
 
 export interface Project {

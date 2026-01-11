@@ -20,6 +20,10 @@ export interface Task {
   attempts: number
   createdAt: string
   updatedAt: string
+  // Timing fields for state transitions
+  startedAt?: string      // When moved to in_progress
+  verifyingAt?: string    // When moved to verifying
+  completedAt?: string    // When moved to done or blocked
 }
 
 export interface Project {
@@ -82,6 +86,9 @@ export interface UpdateTaskInput {
   acceptanceCriteria?: string[]
   status?: TaskStatus
   priority?: number
+  startedAt?: string
+  verifyingAt?: string
+  completedAt?: string
 }
 
 // Electron API types

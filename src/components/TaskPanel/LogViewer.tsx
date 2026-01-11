@@ -5,9 +5,10 @@ interface LogViewerProps {
   title?: string
   onClose?: () => void
   autoScroll?: boolean
+  isLive?: boolean
 }
 
-export function LogViewer({ logContent, title, onClose, autoScroll = true }: LogViewerProps) {
+export function LogViewer({ logContent, title, onClose, autoScroll = true, isLive = false }: LogViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true)
 
@@ -58,9 +59,20 @@ export function LogViewer({ logContent, title, onClose, autoScroll = true }: Log
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden">
       {/* Header */}
-      {(title || onClose) && (
+      {(title || onClose || isLive) && (
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-          <span className="text-sm font-medium text-gray-300">{title || 'Log Output'}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-300">{title || 'Log Output'}</span>
+            {isLive && (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-600/20 text-green-400 text-xs font-medium">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                Live
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {!isScrolledToBottom && (
               <button
