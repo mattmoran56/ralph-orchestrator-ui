@@ -117,6 +117,20 @@ ipcMain.handle('logs:add', (_event, projectId: string, taskId: string, log) => {
   return stateManager.addTaskLog(projectId, taskId, log)
 })
 
+// Loop log operations
+ipcMain.handle('project:addLoopLog', (_event, projectId: string, iteration: number, step: string, message: string, taskId?: string, details?: string) => {
+  return stateManager.addLoopLog(projectId, iteration, step as 'task_selection' | 'execution' | 'verification' | 'result', message, taskId, details)
+})
+
+ipcMain.handle('project:getLoopLogs', (_event, projectId: string) => {
+  const project = stateManager.getProject(projectId)
+  return project?.loopLogs ?? []
+})
+
+ipcMain.handle('project:clearLoopLogs', (_event, projectId: string) => {
+  return stateManager.updateProject(projectId, { loopLogs: [], currentIteration: 0 })
+})
+
 // Orchestrator operations
 ipcMain.handle('orchestrator:start', async (_event, projectId: string) => {
   const orchestrator = getOrchestrator()

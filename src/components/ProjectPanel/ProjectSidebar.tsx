@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { MarkdownEditor } from '../Editor/MarkdownEditor'
+import { LoopLogsViewer } from './LoopLogsViewer'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronProjects } from '../../hooks/useElectronSync'
 
@@ -14,11 +15,13 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const project = getProject(projectId)
   const repository = project ? getRepository(project.repositoryId) : undefined
 
+  const [activeTab, setActiveTab] = useState<'settings' | 'logs'>('settings')
   const [width, setWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
   const [name, setName] = useState(project?.name || '')
   const [baseBranch, setBaseBranch] = useState(project?.baseBranch || '')
   const [description, setDescription] = useState(project?.description || '')
+  const [maxIterations, setMaxIterations] = useState(project?.maxIterations ?? 50)
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -31,12 +34,13 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
       setName(project.name)
       setBaseBranch(project.baseBranch)
       setDescription(project.description)
+      setMaxIterations(project.maxIterations ?? 50)
     }
   }, [project])
 
   // Auto-save with debounce
   const saveChanges = useCallback(
-    (updates: { name?: string; baseBranch?: string; description?: string }) => {
+    (updates: { name?: string; baseBranch?: string; description?: string; maxIterations?: number }) => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -128,116 +132,201 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
         />
 
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Project Settings
-          </h2>
-          <div className="flex items-center gap-1">
-            {/* More menu */}
-            <div className="relative" ref={menuRef}>
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between p-4 pb-0">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Project
+            </h2>
+            <div className="flex items-center gap-1">
+              {/* More menu */}
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                </button>
+                {showMenu && (
+                  <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setShowMenu(false)
+                        setShowDeleteConfirm(true)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Delete Project
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Close button */}
               <button
-                onClick={() => setShowMenu(!showMenu)}
+                onClick={onClose}
                 className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-              {showMenu && (
-                <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-                  <button
-                    onClick={() => {
-                      setShowMenu(false)
-                      setShowDeleteConfirm(true)
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Delete Project
-                  </button>
-                </div>
-              )}
             </div>
-            {/* Close button */}
+          </div>
+          {/* Tab buttons */}
+          <div className="flex px-4 mt-3">
             <button
-              onClick={onClose}
-              className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'settings'
+                  ? 'text-ralph-600 dark:text-ralph-400 border-ralph-600 dark:border-ralph-400'
+                  : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'logs'
+                  ? 'text-ralph-600 dark:text-ralph-400 border-ralph-600 dark:border-ralph-400'
+                  : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Logs
             </button>
           </div>
         </div>
 
-        {/* Settings fields */}
-        <div className="p-4 space-y-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value)
-                saveChanges({ name: e.target.value })
-              }}
-              className="input text-sm"
-              placeholder="Project name"
+        {/* Tab content */}
+        {activeTab === 'settings' ? (
+          <>
+            {/* Settings fields */}
+            <div className="p-4 space-y-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value)
+                    saveChanges({ name: e.target.value })
+                  }}
+                  className="input text-sm"
+                  placeholder="Project name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Repository
+                </label>
+                <p className="text-sm text-gray-700 dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-md">
+                  {repository?.nameWithOwner || 'Unknown repository'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Base Branch
+                </label>
+                <input
+                  type="text"
+                  value={baseBranch}
+                  onChange={(e) => {
+                    setBaseBranch(e.target.value)
+                    saveChanges({ baseBranch: e.target.value })
+                  }}
+                  className="input text-sm font-mono"
+                  placeholder="main"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Max Iterations
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={maxIterations}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value, 10)
+                    if (!isNaN(value) && value >= 1 && value <= 1000) {
+                      setMaxIterations(value)
+                      saveChanges({ maxIterations: value })
+                    } else if (e.target.value === '') {
+                      setMaxIterations(50)
+                      saveChanges({ maxIterations: 50 })
+                    }
+                  }}
+                  className="input text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  Maximum loop iterations before pausing (default: 50)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className={`status-badge ${project.status.replace('_', '-')}`}>
+                  {project.status}
+                </span>
+                {project.status === 'running' && (
+                  <span className="text-ralph-600 dark:text-ralph-400 font-medium">
+                    Iteration {project.currentIteration} of {project.maxIterations}
+                  </span>
+                )}
+                <span>Working branch: {project.workingBranch || 'Not set'}</span>
+              </div>
+            </div>
+
+            {/* Description with markdown editor */}
+            <div className="flex-1 flex flex-col overflow-hidden px-4">
+              <div className="pt-4 pb-2">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Description
+                </label>
+              </div>
+              <div className="flex-1 pb-4 overflow-auto">
+                <MarkdownEditor
+                  value={description}
+                  onChange={(value) => {
+                    setDescription(value)
+                    saveChanges({ description: value })
+                  }}
+                  placeholder="Add a description for this project... Type # for headings, - for lists"
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Logs tab */
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <LoopLogsViewer
+              logs={project.loopLogs || []}
+              currentIteration={project.currentIteration || 0}
+              maxIterations={project.maxIterations || 50}
             />
+            {/* Clear Logs button */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={async () => {
+                  try {
+                    await window.electronAPI.clearLoopLogs(projectId)
+                  } catch (error) {
+                    console.error('Failed to clear loop logs:', error)
+                  }
+                }}
+                className="w-full px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
+              >
+                Clear Logs
+              </button>
+            </div>
           </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Repository
-            </label>
-            <p className="text-sm text-gray-700 dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-md">
-              {repository?.nameWithOwner || 'Unknown repository'}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Base Branch
-            </label>
-            <input
-              type="text"
-              value={baseBranch}
-              onChange={(e) => {
-                setBaseBranch(e.target.value)
-                saveChanges({ baseBranch: e.target.value })
-              }}
-              className="input text-sm font-mono"
-              placeholder="main"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span className={`status-badge ${project.status.replace('_', '-')}`}>
-              {project.status}
-            </span>
-            <span>Working branch: {project.workingBranch || 'Not set'}</span>
-          </div>
-        </div>
-
-        {/* Description with markdown editor */}
-        <div className="flex-1 flex flex-col overflow-hidden px-4">
-          <div className="pt-4 pb-2">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-              Description
-            </label>
-          </div>
-          <div className="flex-1 pb-4 overflow-auto">
-            <MarkdownEditor
-              value={description}
-              onChange={(value) => {
-                setDescription(value)
-                saveChanges({ description: value })
-              }}
-              placeholder="Add a description for this project... Type # for headings, - for lists"
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}

@@ -68,8 +68,15 @@ class Orchestrator {
     }
     this.activeProjects.set(projectId, orchestratorState)
 
-    // Update project status
-    stateManager.updateProject(projectId, { status: 'running' })
+    // Reset currentIteration only if starting from 'idle' (fresh start)
+    // If resuming from 'paused', keep the current iteration count
+    if (project.status === 'idle') {
+      stateManager.updateProject(projectId, { status: 'running', currentIteration: 0 })
+      this.log(projectId, 'Starting fresh, iteration counter reset to 0')
+    } else {
+      stateManager.updateProject(projectId, { status: 'running' })
+      this.log(projectId, `Resuming from iteration ${project.currentIteration}`)
+    }
 
     // Start the orchestration loop
     this.runLoop(projectId).catch((error) => {
@@ -114,24 +121,45 @@ class Orchestrator {
       project = stateManager.getProject(projectId)
       if (!project) break
 
+      // Increment iteration counter at the start of each loop iteration
+      const newIteration = project.currentIteration + 1
+      stateManager.updateProject(projectId, { currentIteration: newIteration })
+      this.log(projectId, `Starting iteration ${newIteration} of ${project.maxIterations}`)
+
+      // Loop log: iteration start
+      stateManager.addLoopLog(
+        projectId,
+        newIteration,
+        'task_selection',
+        `Starting iteration ${newIteration} of ${project.maxIterations}`
+      )
+
+      // Check if max iterations exceeded
+      if (newIteration > project.maxIterations) {
+        this.log(projectId, `Max iterations (${project.maxIterations}) reached, pausing project`)
+        stateManager.updateProject(projectId, { status: 'paused' })
+        orchestratorState.status = 'paused'
+        break
+      }
+
       // Check if paused or stopped
       if (project.status === 'paused' || project.status === 'idle') {
         orchestratorState.status = 'paused'
         break
       }
 
-      // Get next task to work on
-      const nextTask = this.getNextTask(project)
+      // Check if there are any tasks to work on (used as fallback)
+      const fallbackTask = this.getNextTask(project)
 
-      if (!nextTask) {
+      if (!fallbackTask) {
         // All tasks complete
         this.log(projectId, 'All tasks completed!')
         await this.completeProject(project, workingDirectory)
         break
       }
 
-      // Work on the task
-      await this.workOnTask(project, nextTask, workingDirectory)
+      // Work on tasks - Claude will choose which one
+      await this.workOnTask(project, fallbackTask, workingDirectory, newIteration)
 
       // Small delay between tasks
       await this.delay(2000)
@@ -215,12 +243,34 @@ class Orchestrator {
   }
 
   /**
+   * Parse Claude's task selection from output
+   * Looks for WORKING_ON: <task-id> pattern and returns the matching task
+   */
+  private parseTaskSelection(output: string, project: Project): Task | null {
+    // Match WORKING_ON: followed by a task ID (case-insensitive for keyword)
+    // Task IDs can contain lowercase letters, numbers, and hyphens
+    const match = output.match(/WORKING_ON:\s*([a-z0-9-]+)/i)
+
+    if (!match) {
+      return null
+    }
+
+    const taskId = match[1]
+
+    // Find the matching task in the project
+    const task = project.tasks.find((t) => t.id === taskId)
+
+    return task || null
+  }
+
+  /**
    * Work on a single task
    */
   private async workOnTask(
     project: Project,
-    task: Task,
-    workingDirectory: string
+    fallbackTask: Task,
+    workingDirectory: string,
+    iteration: number
   ): Promise<void> {
     const stateManager = getStateManager()
     const processManager = getProcessManager()
@@ -229,30 +279,25 @@ class Orchestrator {
     const orchestratorState = this.activeProjects.get(project.id)
     if (!orchestratorState || orchestratorState.status !== 'running') return
 
-    orchestratorState.currentTaskId = task.id
+    // Build the prompt (shows all tasks, Claude chooses which to work on)
+    const prompt = this.buildTaskPrompt(project)
 
-    this.log(project.id, `Working on task: ${task.title}`)
+    // Get log file path using fallback task ID (will be renamed if different task selected)
+    const logFilePath = processManager.getLogFilePath(project.id, fallbackTask.id)
 
-    // Update task status to in_progress
-    const now = new Date().toISOString()
-    stateManager.updateTask(project.id, task.id, {
-      status: 'in_progress',
-      attempts: task.attempts + 1,
-      startedAt: task.startedAt || now, // Only set if not already started (for retries)
-      verifyingAt: undefined, // Clear verifying timestamp on retry
-      completedAt: undefined // Clear completed timestamp on retry
-    })
-
-    // Build the prompt
-    const prompt = this.buildTaskPrompt(project, task)
-
-    // Get log file path
-    const logFilePath = processManager.getLogFilePath(project.id, task.id)
+    // Loop log: execution starting
+    stateManager.addLoopLog(
+      project.id,
+      iteration,
+      'execution',
+      'Running Claude Code...',
+      fallbackTask.id
+    )
 
     // Start Claude process
     const processId = await processManager.startProcess({
       projectId: project.id,
-      taskId: task.id,
+      taskId: fallbackTask.id,
       prompt,
       workingDirectory,
       logFilePath
@@ -268,9 +313,82 @@ class Orchestrator {
       return
     }
 
+    // Parse Claude's task selection from output
+    // Refresh project to get latest task states
+    const refreshedProject = stateManager.getProject(project.id)
+    if (!refreshedProject) return
+
+    let task = this.parseTaskSelection(result.output, refreshedProject)
+
+    if (task) {
+      this.log(project.id, `Claude selected task: ${task.title}`)
+      // Loop log: task selection
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'task_selection',
+        `Selected task: ${task.title}`,
+        task.id
+      )
+    } else {
+      this.log(project.id, `Warning: Could not parse task selection from output, using fallback task`)
+      // Use the fallback task but get fresh version from state
+      task = refreshedProject.tasks.find((t) => t.id === fallbackTask.id) || fallbackTask
+      // Loop log: fallback task selection
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'task_selection',
+        `Using fallback task: ${task.title} (could not parse selection)`,
+        task.id
+      )
+    }
+
+    orchestratorState.currentTaskId = task.id
+
+    // Update task status to in_progress if it was in backlog
+    const now = new Date().toISOString()
+    if (task.status === 'backlog') {
+      stateManager.updateTask(project.id, task.id, {
+        status: 'in_progress',
+        attempts: task.attempts + 1,
+        startedAt: now,
+        verifyingAt: undefined,
+        completedAt: undefined
+      })
+      // Refresh task with updated values
+      task = { ...task, status: 'in_progress', attempts: task.attempts + 1, startedAt: now }
+    } else {
+      // Task was already in_progress or verifying, just increment attempts
+      stateManager.updateTask(project.id, task.id, {
+        attempts: task.attempts + 1,
+        verifyingAt: undefined,
+        completedAt: undefined
+      })
+      task = { ...task, attempts: task.attempts + 1 }
+    }
+
+    this.log(project.id, `Working on task: ${task.title}`)
+
+    // Helper to truncate output for details
+    const truncateOutput = (output: string, maxLength: number = 500): string => {
+      if (output.length <= maxLength) return output
+      return output.substring(0, maxLength) + '... [truncated]'
+    }
+
     // Handle result
     if (result.taskBlocked) {
       this.log(project.id, `Task blocked: ${result.blockedReason}`)
+
+      // Loop log: execution complete with TASK_BLOCKED
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: TASK_BLOCKED`,
+        task.id,
+        truncateOutput(result.output)
+      )
 
       // Check max attempts
       const settings = stateManager.getSettings()
@@ -284,6 +402,16 @@ class Orchestrator {
           summary: `Blocked after ${task.attempts} attempts: ${result.blockedReason}`,
           success: false
         })
+
+        // Loop log: result - task blocked permanently
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          `Task blocked: ${result.blockedReason}`,
+          task.id,
+          `Max attempts (${settings.maxTaskAttempts}) reached`
+        )
       } else {
         // Keep in progress for retry
         stateManager.addTaskLog(project.id, task.id, {
@@ -291,6 +419,16 @@ class Orchestrator {
           summary: `Blocked (attempt ${task.attempts}): ${result.blockedReason}`,
           success: false
         })
+
+        // Loop log: result - task blocked, will retry
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          `Task blocked: ${result.blockedReason}`,
+          task.id,
+          `Will retry (attempt ${task.attempts} of ${settings.maxTaskAttempts})`
+        )
       }
       return
     }
@@ -298,21 +436,49 @@ class Orchestrator {
     if (result.taskComplete) {
       this.log(project.id, `Task reports complete, verifying...`)
 
+      // Loop log: execution complete with TASK_COMPLETE
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: TASK_COMPLETE`,
+        task.id,
+        truncateOutput(result.output)
+      )
+
       // Move to verifying
       stateManager.updateTask(project.id, task.id, {
         status: 'verifying',
         verifyingAt: new Date().toISOString()
       })
 
+      // Loop log: verification starting
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'verification',
+        'Running verification...',
+        task.id
+      )
+
       // Run verification
       const verificationResult = await verifier.verifyTask(
-        project,
+        refreshedProject,
         task,
         workingDirectory
       )
 
       if (verificationResult.passed) {
         this.log(project.id, `Task verified successfully!`)
+
+        // Loop log: verification passed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'verification',
+          'Verification PASSED',
+          task.id
+        )
 
         // Mark as done
         stateManager.updateTask(project.id, task.id, {
@@ -324,6 +490,15 @@ class Orchestrator {
           summary: 'Task completed and verified',
           success: true
         })
+
+        // Loop log: result - task completed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'result',
+          'Task completed',
+          task.id
+        )
 
         // Commit changes
         const repoManager = getRepoManager()
@@ -340,6 +515,16 @@ class Orchestrator {
       } else {
         this.log(project.id, `Verification failed: ${verificationResult.failureReasons.join(', ')}`)
 
+        // Loop log: verification failed
+        stateManager.addLoopLog(
+          project.id,
+          iteration,
+          'verification',
+          'Verification FAILED',
+          task.id,
+          verificationResult.failureReasons.join(', ')
+        )
+
         // Check max attempts
         const settings = stateManager.getSettings()
         if (task.attempts >= settings.maxTaskAttempts) {
@@ -352,6 +537,16 @@ class Orchestrator {
             summary: `Failed verification after ${task.attempts} attempts`,
             success: false
           })
+
+          // Loop log: result - task blocked due to verification failures
+          stateManager.addLoopLog(
+            project.id,
+            iteration,
+            'result',
+            `Task blocked: verification failed`,
+            task.id,
+            `Max attempts (${settings.maxTaskAttempts}) reached`
+          )
         } else {
           // Move back to in_progress for retry (don't reset startedAt)
           stateManager.updateTask(project.id, task.id, { status: 'in_progress' })
@@ -360,15 +555,45 @@ class Orchestrator {
             summary: `Verification failed (attempt ${task.attempts}): ${verificationResult.failureReasons.join(', ')}`,
             success: false
           })
+
+          // Loop log: result - verification failed, will retry
+          stateManager.addLoopLog(
+            project.id,
+            iteration,
+            'result',
+            'Verification failed, will retry',
+            task.id,
+            `Attempt ${task.attempts} of ${settings.maxTaskAttempts}`
+          )
         }
       }
     } else {
       // Task didn't complete, add log and continue
+
+      // Loop log: execution ended without signal
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'execution',
+        `Claude output: No completion signal`,
+        task.id,
+        truncateOutput(result.output)
+      )
+
       stateManager.addTaskLog(project.id, task.id, {
         filePath: logFilePath,
         summary: `Attempt ${task.attempts} - incomplete`,
         success: false
       })
+
+      // Loop log: result - incomplete
+      stateManager.addLoopLog(
+        project.id,
+        iteration,
+        'result',
+        'Task incomplete, will continue',
+        task.id
+      )
     }
 
     orchestratorState.currentProcessId = null
@@ -376,19 +601,71 @@ class Orchestrator {
   }
 
   /**
-   * Build the prompt for a task
+   * Build the prompt for all tasks, letting Claude choose which to work on
    */
-  private buildTaskPrompt(project: Project, task: Task): string {
-    const otherTasks = project.tasks
-      .filter((t) => t.id !== task.id)
-      .map((t) => `- [${t.status}] ${t.title}`)
-      .join('\n')
+  private buildTaskPrompt(project: Project): string {
+    // Group tasks by status
+    const inProgressTasks = project.tasks.filter((t) => t.status === 'in_progress')
+    const verifyingTasks = project.tasks.filter((t) => t.status === 'verifying')
+    const backlogTasks = project.tasks
+      .filter((t) => t.status === 'backlog')
+      .sort((a, b) => a.priority - b.priority)
+    const doneTasks = project.tasks.filter((t) => t.status === 'done')
+    const blockedTasks = project.tasks.filter((t) => t.status === 'blocked')
 
-    const criteriaList = task.acceptanceCriteria
-      .map((c, i) => `${i + 1}. ${c}`)
-      .join('\n')
+    // Helper to format a single task
+    const formatTask = (task: Task): string => {
+      const criteria = task.acceptanceCriteria.length > 0
+        ? task.acceptanceCriteria.map((c, i) => `   ${i + 1}. ${c}`).join('\n')
+        : '   No specific criteria'
+      return `[${task.id}] ${task.title}
+   Description: ${task.description}
+   Acceptance Criteria:
+${criteria}`
+    }
+
+    // Build task sections
+    let taskSections = ''
+
+    if (inProgressTasks.length > 0) {
+      taskSections += `## In Progress (continue these unless blocked)
+${inProgressTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (verifyingTasks.length > 0) {
+      taskSections += `## Needs Verification (verification failed, fix issues)
+${verifyingTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (backlogTasks.length > 0) {
+      taskSections += `## Backlog (sorted by priority, pick one if no in-progress tasks)
+${backlogTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (doneTasks.length > 0) {
+      taskSections += `## Completed (for context only)
+${doneTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
+
+`
+    }
+
+    if (blockedTasks.length > 0) {
+      taskSections += `## Blocked (do not work on these)
+${blockedTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
+
+`
+    }
 
     return `# Project Context
+
+**Project:** ${project.name}
+**Description:** ${project.description}
 
 ${project.productBrief || 'No product brief provided.'}
 
@@ -396,33 +673,33 @@ ${project.productBrief || 'No product brief provided.'}
 
 ${project.solutionBrief || 'No solution brief provided.'}
 
-# Current Task
+# All Tasks
 
-**Title:** ${task.title}
-**Description:** ${task.description}
-
-## Acceptance Criteria
-${criteriaList || 'No specific criteria - use your best judgment.'}
-
+${taskSections}
 # Instructions
 
-Work through this task completely. Follow these guidelines:
+You must choose ONE task to work on and complete it. Follow these steps:
 
-1. Read and understand the existing codebase structure
-2. Implement the required changes
-3. Write clean, well-documented code
-4. Test your changes work as expected
-5. Commit your changes with clear, descriptive commit messages
+1. **Choose a task**: Pick ONE task to work on using this priority:
+   - First: Continue any "In Progress" task (unless truly blocked)
+   - Second: Fix any "Needs Verification" task
+   - Third: Pick the highest priority task from "Backlog"
 
-When you have completed the task and believe all acceptance criteria are met, output: TASK_COMPLETE
+2. **Declare your choice**: Output \`WORKING_ON: <task-id>\` (e.g., \`WORKING_ON: task-abc123\`)
 
-If you encounter a blocker that prevents you from completing the task (missing dependencies, unclear requirements, external service issues), output: TASK_BLOCKED: [describe the blocker]
+3. **Implement the task**:
+   - Read and understand the existing codebase structure
+   - Implement the required changes
+   - Write clean, well-documented code
+   - Test your changes work as expected
+   - Commit your changes with clear, descriptive commit messages
 
-# Other Tasks (for context only - do NOT work on these)
-${otherTasks || 'No other tasks.'}
+4. **Signal completion**: When done, output one of:
+   - \`TASK_COMPLETE\` - if all acceptance criteria are met
+   - \`TASK_BLOCKED: <reason>\` - if you cannot complete the task due to missing dependencies, unclear requirements, or external issues
 
 # Important Notes
-- Focus only on the current task
+- Work on exactly ONE task per session
 - Do not push to remote - commits only
 - If tests exist, make sure they pass
 - Follow existing code patterns and conventions`

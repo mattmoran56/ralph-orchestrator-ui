@@ -44,6 +44,14 @@ const api = {
   getTaskLogs: (projectId: string, taskId: string) =>
     ipcRenderer.invoke('logs:get', projectId, taskId),
 
+  // Loop logs
+  addLoopLog: (projectId: string, iteration: number, step: string, message: string, taskId?: string, details?: string) =>
+    ipcRenderer.invoke('project:addLoopLog', projectId, iteration, step, message, taskId, details),
+  getLoopLogs: (projectId: string) =>
+    ipcRenderer.invoke('project:getLoopLogs', projectId),
+  clearLoopLogs: (projectId: string) =>
+    ipcRenderer.invoke('project:clearLoopLogs', projectId),
+
   // Event subscriptions
   onStateChange: (callback: (state: unknown) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state)

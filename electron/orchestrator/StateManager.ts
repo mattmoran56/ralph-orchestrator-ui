@@ -6,6 +6,18 @@ import { v4 as uuidv4 } from 'uuid'
 // Types
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
+export type LoopStep = 'task_selection' | 'execution' | 'verification' | 'result'
+
+export interface LoopLogEntry {
+  id: string
+  iteration: number
+  timestamp: string
+  step: LoopStep
+  taskId?: string
+  taskTitle?: string
+  message: string
+  details?: string
+}
 
 export interface Repository {
   id: string
@@ -54,6 +66,9 @@ export interface Project {
   workingBranch: string
   status: ProjectStatus
   tasks: Task[]
+  maxIterations: number
+  currentIteration: number
+  loopLogs: LoopLogEntry[]
   createdAt: string
   updatedAt: string
 }
@@ -125,9 +140,17 @@ class StateManager {
         }
 
         // Merge with defaults to ensure all fields exist
+        // Migrate projects to ensure new fields exist
+        const migratedProjects = (parsed.projects || []).map((project: Partial<Project>) => ({
+          ...project,
+          maxIterations: project.maxIterations ?? 50,
+          currentIteration: project.currentIteration ?? 0,
+          loopLogs: project.loopLogs ?? []
+        }))
+
         return {
           repositories: parsed.repositories || [],
-          projects: parsed.projects || [],
+          projects: migratedProjects,
           settings: { ...defaultSettings, ...parsed.settings }
         }
       }
@@ -342,6 +365,9 @@ class StateManager {
       workingBranch: `ralph/${input.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
       status: 'idle',
       tasks: [],
+      maxIterations: 50,
+      currentIteration: 0,
+      loopLogs: [],
       createdAt: now,
       updatedAt: now
     }
@@ -469,6 +495,34 @@ class StateManager {
 
     task.logs.push(logEntry)
     this.updateTask(projectId, taskId, { logs: task.logs })
+    return logEntry
+  }
+
+  // Loop log operations
+  addLoopLog(
+    projectId: string,
+    iteration: number,
+    step: LoopStep,
+    message: string,
+    taskId?: string,
+    details?: string
+  ): LoopLogEntry | null {
+    const project = this.getProject(projectId)
+    if (!project) return null
+
+    const logEntry: LoopLogEntry = {
+      id: uuidv4(),
+      iteration,
+      timestamp: new Date().toISOString(),
+      step,
+      message,
+      ...(taskId && { taskId }),
+      ...(details && { details })
+    }
+
+    project.loopLogs.push(logEntry)
+    project.updatedAt = new Date().toISOString()
+    this.saveState()
     return logEntry
   }
 
