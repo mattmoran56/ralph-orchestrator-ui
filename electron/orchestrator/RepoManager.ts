@@ -1,5 +1,5 @@
 import { spawn, execSync } from 'child_process'
-import { existsSync, mkdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join, basename } from 'path'
 import { getStateManager } from './StateManager'
 
@@ -374,6 +374,47 @@ class RepoManager {
     } catch (error) {
       const err = error as Error
       return { success: false, output: '', error: err.message }
+    }
+  }
+
+  /**
+   * Setup the .ralph folder structure in a workspace
+   * Creates .ralph/ directory with tasks.json, logs.json, and .gitignore
+   */
+  setupRalphFolder(projectId: string, repoUrl: string): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    // Check if repo exists
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    const ralphPath = join(repoPath, '.ralph')
+
+    try {
+      // Create .ralph directory if it doesn't exist
+      if (!existsSync(ralphPath)) {
+        mkdirSync(ralphPath, { recursive: true })
+      }
+
+      // Create .gitignore to ignore all files in .ralph folder
+      const gitignorePath = join(ralphPath, '.gitignore')
+      writeFileSync(gitignorePath, '*\n', 'utf-8')
+
+      // Create tasks.json with empty structure
+      const tasksPath = join(ralphPath, 'tasks.json')
+      const tasksContent = JSON.stringify({ project: {}, tasks: [] }, null, 2)
+      writeFileSync(tasksPath, tasksContent, 'utf-8')
+
+      // Create logs.json with empty structure
+      const logsPath = join(ralphPath, 'logs.json')
+      const logsContent = JSON.stringify({ entries: [] }, null, 2)
+      writeFileSync(logsPath, logsContent, 'utf-8')
+
+      return { success: true, output: `Created .ralph folder at ${ralphPath}` }
+    } catch (error) {
+      const err = error as Error
+      return { success: false, output: '', error: `Failed to setup .ralph folder: ${err.message}` }
     }
   }
 
