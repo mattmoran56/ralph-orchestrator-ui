@@ -71,22 +71,16 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
     <div className="flex flex-col min-h-full">
       {/* Header */}
       <div className="draggable border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onSettingsClick}
-            className="text-xl font-semibold text-gray-900 dark:text-gray-100 non-draggable hover:underline cursor-pointer"
-          >
-            {project.name}
-          </button>
-          <div className="flex items-center gap-2 non-draggable">
-            {/* Start/Stop button - green play when not running, red stop when running */}
+        <div className="flex items-center gap-3">
+          {/* Start/Stop button - green play when not running, red stop when running */}
+          <div className="non-draggable">
             {project.status === 'idle' || project.status === 'paused' ? (
               <button
                 onClick={handleStartProject}
                 className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
                 title="Start Project"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                 </svg>
               </button>
@@ -96,28 +90,42 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
                 className="p-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
                 title="Stop Project"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
                 </svg>
               </button>
             ) : null}
-            {/* Status pill with color dot */}
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+          </div>
+
+          {/* Title and status pill */}
+          <div className="flex flex-col non-draggable">
+            <button
+              onClick={onSettingsClick}
+              className="text-xl font-semibold text-gray-900 dark:text-gray-100 hover:underline cursor-pointer text-left"
+            >
+              {project.name}
+            </button>
+            {/* Status pill with color dot - under the title */}
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 w-fit mt-1">
               <span className={`w-2 h-2 rounded-full ${statusIndicator[project.status]}`} />
               {statusLabel[project.status]}
             </span>
-            {/* Settings button - small icon only */}
-            <button
-              onClick={onSettingsClick}
-              className="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-              title="Project Settings"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
           </div>
+
+          {/* Spacer to push settings to the right */}
+          <div className="flex-1" />
+
+          {/* Settings button - small grey icon */}
+          <button
+            onClick={onSettingsClick}
+            className="non-draggable p-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500 transition-colors"
+            title="Project Settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         </div>
       </div>
 
