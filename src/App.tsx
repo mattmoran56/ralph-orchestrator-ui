@@ -26,11 +26,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [sidebarView, setSidebarView] = useState<SidebarView>('none')
 
-  // Show project sidebar when a new project is selected, and close settings
+  // Close settings when a project is selected
   const prevProjectId = usePrevious(selectedProjectId)
   useEffect(() => {
     if (selectedProjectId && selectedProjectId !== prevProjectId) {
-      setSidebarView('project')
       setShowSettings(false)
     }
   }, [selectedProjectId, prevProjectId])
@@ -53,6 +52,11 @@ function App() {
     setSidebarView('project')
   }
 
+  // Handle new project created - show project settings sidebar
+  const handleProjectCreated = () => {
+    setSidebarView('project')
+  }
+
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -66,47 +70,38 @@ function App() {
 
   return (
     <div className="h-screen flex bg-gray-50 dark:bg-gray-900">
-      {/* Left Sidebar - Full height including title bar */}
+      {/* Left Sidebar - Full height */}
       <aside className="w-64 bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
         <ProjectList
           isSettingsSelected={showSettings}
           onSettingsClick={handleSettingsClick}
+          onProjectCreated={handleProjectCreated}
         />
       </aside>
 
-      {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Title bar drag region for macOS */}
-        <div className="h-8 bg-white dark:bg-gray-800 draggable flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            Ralph Orchestrator
-          </span>
-        </div>
-
-        {/* Main content */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {showSettings ? (
-            <SettingsPanel />
-          ) : selectedProjectId ? (
-            <KanbanBoard
-              projectId={selectedProjectId}
-              onTaskSelect={handleTaskSelect}
-              onSettingsClick={handleProjectSettingsClick}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-800">
-              <div className="text-center">
-                <h2 className="text-xl font-medium text-gray-500 dark:text-gray-400">
-                  No project selected
-                </h2>
-                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
-                  Select a project from the sidebar or create a new one
-                </p>
-              </div>
+      {/* Main content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {showSettings ? (
+          <SettingsPanel />
+        ) : selectedProjectId ? (
+          <KanbanBoard
+            projectId={selectedProjectId}
+            onTaskSelect={handleTaskSelect}
+            onSettingsClick={handleProjectSettingsClick}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-800">
+            <div className="text-center">
+              <h2 className="text-xl font-medium text-gray-500 dark:text-gray-400">
+                No project selected
+              </h2>
+              <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                Select a project from the sidebar or create a new one
+              </p>
             </div>
-          )}
-        </main>
-      </div>
+          </div>
+        )}
+      </main>
 
       {/* Right Sidebar - Only one at a time */}
       {sidebarView === 'project' && selectedProjectId && (

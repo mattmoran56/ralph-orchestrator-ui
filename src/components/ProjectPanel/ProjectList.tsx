@@ -6,6 +6,7 @@ import type { Project, ProjectStatus } from '../../types'
 interface ProjectListProps {
   isSettingsSelected: boolean
   onSettingsClick: () => void
+  onProjectCreated: () => void
 }
 
 interface ProjectGroup {
@@ -14,7 +15,7 @@ interface ProjectGroup {
   projects: Project[]
 }
 
-export function ProjectList({ isSettingsSelected, onSettingsClick }: ProjectListProps) {
+export function ProjectList({ isSettingsSelected, onSettingsClick, onProjectCreated }: ProjectListProps) {
   const { projects, selectedProjectId, selectProject } = useProjectStore()
   const { createProject } = useElectronProjects()
   const [showNewForm, setShowNewForm] = useState(false)
@@ -119,6 +120,7 @@ export function ProjectList({ isSettingsSelected, onSettingsClick }: ProjectList
           onSubmit={async (input) => {
             await createProject(input)
             setShowNewForm(false)
+            onProjectCreated()
           }}
         />
       )}
