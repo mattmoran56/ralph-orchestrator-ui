@@ -128,14 +128,18 @@ function App() {
             onSettingsClick={handleProjectSettingsClick}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-800">
-            <div className="text-center">
-              <h2 className="text-xl font-medium text-gray-500 dark:text-gray-400">
-                No project selected
-              </h2>
-              <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
-                Select a project from the sidebar or create a new one
-              </p>
+          <div className="flex-1 flex flex-col bg-white dark:bg-gray-800">
+            {/* Draggable header bar for empty state */}
+            <div className="h-12 draggable flex-shrink-0" />
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <h2 className="text-xl font-medium text-gray-500 dark:text-gray-400">
+                  No project selected
+                </h2>
+                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                  Select a project from the sidebar or create a new one
+                </p>
+              </div>
             </div>
           </div>
         )}

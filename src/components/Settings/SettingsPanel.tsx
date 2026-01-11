@@ -35,11 +35,13 @@ export function SettingsPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Settings
-        </h1>
+      {/* Header - draggable for window movement */}
+      <div className="draggable border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="h-12 flex items-center px-4">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 non-draggable">
+            Settings
+          </h1>
+        </div>
       </div>
 
       {/* Content */}

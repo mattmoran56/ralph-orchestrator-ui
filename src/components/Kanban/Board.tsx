@@ -52,12 +52,12 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div className="draggable border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 non-draggable">
             {project.name}
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 non-draggable">
             <span className={`status-badge ${project.status.replace('_', '-')}`}>
               {project.status}
             </span>
