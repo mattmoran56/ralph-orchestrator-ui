@@ -110,6 +110,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       workingBranch: `ralph/${input.name.toLowerCase().replace(/\s+/g, '-')}`,
       status: 'idle',
       tasks: [],
+      maxIterations: 10,
+      currentIteration: 0,
+      loopLogs: [],
       createdAt: now,
       updatedAt: now
     }

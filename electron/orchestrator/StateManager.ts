@@ -357,6 +357,9 @@ class StateManager {
       workingBranch: `ralph/${input.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
       status: 'idle',
       tasks: [],
+      maxIterations: 10,
+      currentIteration: 0,
+      loopLogs: [],
       createdAt: now,
       updatedAt: now
     }
