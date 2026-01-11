@@ -170,6 +170,10 @@ export interface ElectronAPI {
   pauseProject: (projectId: string) => Promise<void>
   getTaskLogs: (projectId: string, taskId: string) => Promise<string>
   isClaudeAvailable: () => Promise<boolean>
+  // Loop log operations
+  addLoopLog: (projectId: string, iteration: number, step: LoopStep, message: string, taskId?: string, details?: string) => Promise<LoopLogEntry | null>
+  getLoopLogs: (projectId: string) => Promise<LoopLogEntry[]>
+  clearLoopLogs: (projectId: string) => Promise<Project | null>
   // GitHub auth
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
   loginToGitHub: () => Promise<{ success: boolean; error?: string }>
