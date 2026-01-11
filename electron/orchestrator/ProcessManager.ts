@@ -188,20 +188,54 @@ class ProcessManager {
   private parseProcessResult(claudeProcess: ClaudeProcess): ProcessResult {
     const output = claudeProcess.output
 
-    // Check for task completion signals
-    const isComplete = output.includes('TASK_COMPLETE') ||
-                       output.includes('DONE') ||
-                       output.includes('Task completed')
+    // Extract the final result from stream-json output
+    // The result object contains Claude's final response
+    let resultText = ''
+    const lines = output.split('\n')
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim()
+      if (line.startsWith('{"type":"result"')) {
+        try {
+          const resultObj = JSON.parse(line)
+          resultText = resultObj.result || ''
+          break
+        } catch {
+          // Not valid JSON, continue searching
+        }
+      }
+    }
 
-    // Check for blocked signals
-    const isBlocked = output.includes('TASK_BLOCKED') ||
-                      output.includes('BLOCKED')
+    // If no result object found, fall back to checking last assistant message
+    if (!resultText) {
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim()
+        if (line.startsWith('{"type":"assistant"')) {
+          try {
+            const msgObj = JSON.parse(line)
+            const content = msgObj.message?.content
+            if (Array.isArray(content)) {
+              for (const item of content) {
+                if (item.type === 'text' && item.text) {
+                  resultText = item.text
+                  break
+                }
+              }
+            }
+            if (resultText) break
+          } catch {
+            // Not valid JSON, continue searching
+          }
+        }
+      }
+    }
+
+    // Check for task completion/blocked signals in the result text only
+    const isComplete = resultText.includes('TASK_COMPLETE')
+    const isBlocked = resultText.includes('TASK_BLOCKED')
 
     let blockedReason: string | undefined
     if (isBlocked) {
-      // Try to extract reason
-      const blockMatch = output.match(/TASK_BLOCKED:\s*(.+?)(?:\n|$)/i) ||
-                         output.match(/BLOCKED:\s*(.+?)(?:\n|$)/i)
+      const blockMatch = resultText.match(/TASK_BLOCKED:\s*(.+?)(?:\n|$)/i)
       blockedReason = blockMatch?.[1]?.trim() || 'Unknown reason'
     }
 

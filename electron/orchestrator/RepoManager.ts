@@ -347,6 +347,33 @@ class RepoManager {
     const repoPath = this.getRepoPath(projectId, repoUrl)
     return existsSync(repoPath)
   }
+
+  /**
+   * Check if a branch exists on the remote
+   */
+  remoteBranchExists(projectId: string, repoUrl: string, branchName: string): boolean {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return false
+    }
+
+    const result = this.execGit(`git ls-remote --heads origin ${branchName}`, repoPath)
+    return result.success && result.output.trim().length > 0
+  }
+
+  /**
+   * Push a branch to remote (used for ensuring base branch exists)
+   */
+  pushBranch(projectId: string, repoUrl: string, branchName: string): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    return this.execGit(`git push -u origin ${branchName}`, repoPath)
+  }
 }
 
 // Singleton

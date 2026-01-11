@@ -445,7 +445,19 @@ ${otherTasks || 'No other tasks.'}
 
     this.log(project.id, 'Preparing to create PR...')
 
-    // Push the branch
+    // Check if base branch exists on remote, push if not
+    if (!repoManager.remoteBranchExists(project.id, project.repoUrl, project.baseBranch)) {
+      this.log(project.id, `Base branch ${project.baseBranch} not on remote, pushing...`)
+      const basePushResult = repoManager.pushBranch(project.id, project.repoUrl, project.baseBranch)
+      if (!basePushResult.success) {
+        this.log(project.id, `Failed to push base branch: ${basePushResult.error}`)
+        stateManager.updateProject(project.id, { status: 'failed' })
+        return
+      }
+      this.log(project.id, 'Base branch pushed to remote')
+    }
+
+    // Push the working branch
     const pushResult = repoManager.push(project.id, project.repoUrl, project.workingBranch)
 
     if (!pushResult.success) {
@@ -454,7 +466,7 @@ ${otherTasks || 'No other tasks.'}
       return
     }
 
-    this.log(project.id, 'Pushed changes to remote')
+    this.log(project.id, 'Working branch pushed to remote')
 
     // Build PR body
     let prBody = `## Summary\n\nThis PR completes the following tasks:\n${completedTasks.map((t) => `- ${t.title}`).join('\n')}`
@@ -552,7 +564,7 @@ ${otherTasks || 'No other tasks.'}
   /**
    * Resume a paused project
    */
-  resumeProject(projectId: string): boolean {
+  async resumeProject(projectId: string): Promise<boolean> {
     const stateManager = getStateManager()
     const project = stateManager.getProject(projectId)
 

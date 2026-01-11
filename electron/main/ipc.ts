@@ -127,9 +127,9 @@ ipcMain.handle('orchestrator:pause', (_event, projectId: string) => {
   return { success }
 })
 
-ipcMain.handle('orchestrator:resume', (_event, projectId: string) => {
+ipcMain.handle('orchestrator:resume', async (_event, projectId: string) => {
   const orchestrator = getOrchestrator()
-  const success = orchestrator.resumeProject(projectId)
+  const success = await orchestrator.resumeProject(projectId)
   return { success }
 })
 
