@@ -256,6 +256,12 @@ class RepoManager {
       return { success: false, output: '', error: 'Repository not cloned' }
     }
 
+    // First, try to rebase on top of any remote changes to avoid non-fast-forward errors
+    // This handles cases where previous runs pushed commits that we need to incorporate
+    if (this.remoteBranchExists(projectId, repoUrl, branchName)) {
+      this.execGit(`git pull --rebase origin ${branchName}`, repoPath)
+    }
+
     return this.execGit(`git push -u origin ${branchName}`, repoPath)
   }
 
