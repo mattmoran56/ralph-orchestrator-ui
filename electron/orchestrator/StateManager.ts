@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, watch, FSWatcher } from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -17,6 +17,45 @@ export interface LoopLogEntry {
   taskTitle?: string
   message: string
   details?: string
+}
+
+// Workspace log entry format for .ralph/logs.json
+export interface WorkspaceLogEntry {
+  timestamp: string
+  iteration: number
+  taskId?: string
+  action: string
+  from?: string
+  to?: string
+  message: string
+}
+
+// Workspace tasks.json structure
+export interface WorkspaceTasksData {
+  project: {
+    id: string
+    name: string
+    description: string
+    productBrief: string
+    solutionBrief: string
+  }
+  tasks: Array<{
+    id: string
+    title: string
+    description: string
+    acceptanceCriteria: string[]
+    priority: number
+    status: TaskStatus
+    attempts: number
+    startedAt: string | null
+    verifyingAt: string | null
+    completedAt: string | null
+  }>
+}
+
+// Workspace logs.json structure
+export interface WorkspaceLogsData {
+  entries: WorkspaceLogEntry[]
 }
 
 export interface Repository {
@@ -533,6 +572,158 @@ class StateManager {
       data: this.dataPath,
       workspaces: this.state.settings.workspacesPath || join(app.getPath('userData'), 'workspaces'),
       logs: join(app.getPath('userData'), 'logs')
+    }
+  }
+
+  // Workspace file operations
+
+  /**
+   * Extract repo name from URL (e.g., "https://github.com/owner/repo.git" -> "repo")
+   */
+  private extractRepoName(repoUrl: string): string {
+    const name = basename(repoUrl, '.git')
+    return name || 'repo'
+  }
+
+  /**
+   * Get the path to a project's workspace .ralph folder
+   * Returns null if the project or repository doesn't exist
+   */
+  private getWorkspaceRalphPath(projectId: string): string | null {
+    const project = this.getProject(projectId)
+    if (!project) return null
+
+    const repository = this.getRepository(project.repositoryId)
+    if (!repository) return null
+
+    const workspacesPath = this.state.settings.workspacesPath || join(app.getPath('userData'), 'workspaces')
+    const repoName = this.extractRepoName(repository.url)
+    return join(workspacesPath, projectId, repoName, '.ralph')
+  }
+
+  /**
+   * Get the path to .ralph/tasks.json for a project
+   * Returns null if the workspace doesn't exist
+   */
+  getWorkspaceTasksPath(projectId: string): string | null {
+    const ralphPath = this.getWorkspaceRalphPath(projectId)
+    if (!ralphPath) return null
+
+    const tasksPath = join(ralphPath, 'tasks.json')
+    if (!existsSync(tasksPath)) return null
+
+    return tasksPath
+  }
+
+  /**
+   * Get the path to .ralph/logs.json for a project
+   * Returns null if the workspace doesn't exist
+   */
+  getWorkspaceLogsPath(projectId: string): string | null {
+    const ralphPath = this.getWorkspaceRalphPath(projectId)
+    if (!ralphPath) return null
+
+    const logsPath = join(ralphPath, 'logs.json')
+    if (!existsSync(logsPath)) return null
+
+    return logsPath
+  }
+
+  /**
+   * Read and parse tasks.json from workspace
+   * Returns null if file doesn't exist or is invalid
+   */
+  readWorkspaceTasks(projectId: string): WorkspaceTasksData | null {
+    const tasksPath = this.getWorkspaceTasksPath(projectId)
+    if (!tasksPath) return null
+
+    try {
+      const content = readFileSync(tasksPath, 'utf-8')
+      return JSON.parse(content) as WorkspaceTasksData
+    } catch (error) {
+      console.error(`Failed to read workspace tasks for project ${projectId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Write tasks data to workspace tasks.json
+   * Returns true on success, false on failure
+   */
+  writeWorkspaceTasks(projectId: string, data: WorkspaceTasksData): boolean {
+    const ralphPath = this.getWorkspaceRalphPath(projectId)
+    if (!ralphPath) return false
+
+    const tasksPath = join(ralphPath, 'tasks.json')
+
+    try {
+      // Ensure .ralph directory exists
+      if (!existsSync(ralphPath)) {
+        mkdirSync(ralphPath, { recursive: true })
+      }
+
+      writeFileSync(tasksPath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    } catch (error) {
+      console.error(`Failed to write workspace tasks for project ${projectId}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Read and parse logs.json from workspace
+   * Returns null if file doesn't exist or is invalid
+   */
+  readWorkspaceLogs(projectId: string): WorkspaceLogsData | null {
+    const logsPath = this.getWorkspaceLogsPath(projectId)
+    if (!logsPath) return null
+
+    try {
+      const content = readFileSync(logsPath, 'utf-8')
+      return JSON.parse(content) as WorkspaceLogsData
+    } catch (error) {
+      console.error(`Failed to read workspace logs for project ${projectId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Append a log entry to workspace logs.json
+   * Returns true on success, false on failure
+   */
+  appendWorkspaceLog(projectId: string, entry: WorkspaceLogEntry): boolean {
+    const ralphPath = this.getWorkspaceRalphPath(projectId)
+    if (!ralphPath) return false
+
+    const logsPath = join(ralphPath, 'logs.json')
+
+    try {
+      // Ensure .ralph directory exists
+      if (!existsSync(ralphPath)) {
+        mkdirSync(ralphPath, { recursive: true })
+      }
+
+      // Read existing logs or create new structure
+      let logsData: WorkspaceLogsData = { entries: [] }
+      if (existsSync(logsPath)) {
+        try {
+          const content = readFileSync(logsPath, 'utf-8')
+          logsData = JSON.parse(content) as WorkspaceLogsData
+        } catch {
+          // If parsing fails, start with empty entries
+          logsData = { entries: [] }
+        }
+      }
+
+      // Append the new entry
+      logsData.entries.push(entry)
+
+      // Write back
+      writeFileSync(logsPath, JSON.stringify(logsData, null, 2), 'utf-8')
+      return true
+    } catch (error) {
+      console.error(`Failed to append workspace log for project ${projectId}:`, error)
+      return false
     }
   }
 
