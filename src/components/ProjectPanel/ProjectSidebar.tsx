@@ -10,7 +10,7 @@ interface ProjectSidebarProps {
 
 export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const { getProject } = useProjectStore()
-  const { updateProject } = useElectronProjects()
+  const { updateProject, deleteProject } = useElectronProjects()
   const project = getProject(projectId)
 
   const [width, setWidth] = useState(480)
@@ -19,7 +19,10 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const [repoUrl, setRepoUrl] = useState(project?.repoUrl || '')
   const [baseBranch, setBaseBranch] = useState(project?.baseBranch || '')
   const [description, setDescription] = useState(project?.description || '')
+  const [showMenu, setShowMenu] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sync local state when project changes
@@ -73,6 +76,23 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
     }
   }, [isResizing])
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false)
+      }
+    }
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMenu])
+
   // Cleanup save timeout on unmount
   useEffect(() => {
     return () => {
@@ -82,38 +102,72 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
     }
   }, [])
 
+  const handleDelete = async () => {
+    await deleteProject(projectId)
+    setShowDeleteConfirm(false)
+    onClose()
+  }
+
   if (!project) return null
 
   return (
-    <div
-      ref={sidebarRef}
-      className="fixed top-8 right-0 bottom-0 bg-white dark:bg-gray-800 z-40 flex flex-col border-l border-gray-200 dark:border-gray-700"
-      style={{
-        width,
-        boxShadow: '-8px 0 30px -5px rgba(0, 0, 0, 0.15)'
-      }}
-    >
-      {/* Resize handle */}
+    <>
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-ralph-500 transition-colors ${
-          isResizing ? 'bg-ralph-500' : 'bg-transparent'
-        }`}
-        onMouseDown={handleMouseDown}
-      />
+        ref={sidebarRef}
+        className="fixed top-0 right-0 bottom-0 bg-white dark:bg-gray-800 z-40 flex flex-col border-l border-gray-200 dark:border-gray-700"
+        style={{
+          width,
+          boxShadow: '-8px 0 30px -5px rgba(0, 0, 0, 0.15)'
+        }}
+      >
+        {/* Resize handle */}
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-ralph-500 transition-colors ${
+            isResizing ? 'bg-ralph-500' : 'bg-transparent'
+          }`}
+          onMouseDown={handleMouseDown}
+        />
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Project Settings
           </h2>
-          <button
-            onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            {/* More menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                </svg>
+              </button>
+              {showMenu && (
+                <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                  <button
+                    onClick={() => {
+                      setShowMenu(false)
+                      setShowDeleteConfirm(true)
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Delete Project
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Settings fields */}
@@ -192,6 +246,35 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             />
           </div>
         </div>
-    </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              Delete Project
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to delete "{project.name}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="btn-danger"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

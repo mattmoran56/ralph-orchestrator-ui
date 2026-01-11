@@ -130,7 +130,7 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
   return (
     <div
       ref={sidebarRef}
-      className="fixed top-8 right-0 bottom-0 bg-white dark:bg-gray-800 z-40 flex flex-col border-l border-gray-200 dark:border-gray-700"
+      className="fixed top-0 right-0 bottom-0 bg-white dark:bg-gray-800 z-40 flex flex-col border-l border-gray-200 dark:border-gray-700"
       style={{
         width,
         boxShadow: '-8px 0 30px -5px rgba(0, 0, 0, 0.15)'
