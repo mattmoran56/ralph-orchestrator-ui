@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { getStateManager, type Project, type Task, type WorkspaceTasksData } from './StateManager'
+import { getStateManager, type Project, type WorkspaceTasksData } from './StateManager'
 import { getRepoManager } from './RepoManager'
 import { getProcessManager } from './ProcessManager'
 
@@ -354,105 +354,128 @@ class Orchestrator {
   /**
    * Build the prompt for Claude to manage its own task state
    * Claude reads tasks.json, picks a task, updates status, and works on it
-   * NOTE: This will be rewritten in task-07 to instruct Claude to manage its own state
    */
-  private buildTaskPrompt(project: Project, _iteration: number): string {
-    // Group tasks by status
-    const inProgressTasks = project.tasks.filter((t) => t.status === 'in_progress')
-    const verifyingTasks = project.tasks.filter((t) => t.status === 'verifying')
-    const backlogTasks = project.tasks
-      .filter((t) => t.status === 'backlog')
-      .sort((a, b) => a.priority - b.priority)
-    const doneTasks = project.tasks.filter((t) => t.status === 'done')
-    const blockedTasks = project.tasks.filter((t) => t.status === 'blocked')
-
-    // Helper to format a single task
-    const formatTask = (task: Task): string => {
-      const criteria = task.acceptanceCriteria.length > 0
-        ? task.acceptanceCriteria.map((c, i) => `   ${i + 1}. ${c}`).join('\n')
-        : '   No specific criteria'
-      return `[${task.id}] ${task.title}
-   Description: ${task.description}
-   Acceptance Criteria:
-${criteria}`
-    }
-
-    // Build task sections
-    let taskSections = ''
-
-    if (inProgressTasks.length > 0) {
-      taskSections += `## In Progress (continue these unless blocked)
-${inProgressTasks.map(formatTask).join('\n\n')}
-
-`
-    }
-
-    if (verifyingTasks.length > 0) {
-      taskSections += `## Needs Verification (verification failed, fix issues)
-${verifyingTasks.map(formatTask).join('\n\n')}
-
-`
-    }
-
-    if (backlogTasks.length > 0) {
-      taskSections += `## Backlog (sorted by priority, pick one if no in-progress tasks)
-${backlogTasks.map(formatTask).join('\n\n')}
-
-`
-    }
-
-    if (doneTasks.length > 0) {
-      taskSections += `## Completed (for context only)
-${doneTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
-
-`
-    }
-
-    if (blockedTasks.length > 0) {
-      taskSections += `## Blocked (do not work on these)
-${blockedTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
-
-`
-    }
-
+  private buildTaskPrompt(project: Project, iteration: number): string {
     return `# Project Context
 
 **Project:** ${project.name}
 **Description:** ${project.description}
+**Iteration:** ${iteration} of ${project.maxIterations}
+
+## Product Brief
 
 ${project.productBrief || 'No product brief provided.'}
 
-# Solution Overview
+## Solution Brief
 
 ${project.solutionBrief || 'No solution brief provided.'}
 
-# All Tasks
+# Task Management
 
-${taskSections}
-# Instructions
+Your tasks are stored in \`.ralph/tasks.json\` in the workspace. You are responsible for managing task state yourself.
 
-You must choose ONE task to work on and complete it. Follow these steps:
+## Reading Tasks
 
-1. **Choose a task**: Pick ONE task to work on using this priority:
-   - First: Continue any "In Progress" task (unless truly blocked)
-   - Second: Fix any "Needs Verification" task
-   - Third: Pick the highest priority task from "Backlog"
+Read \`.ralph/tasks.json\` to see all tasks. The file has this structure:
+\`\`\`json
+{
+  "project": { "id": "...", "name": "...", ... },
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "...",
+      "description": "...",
+      "acceptanceCriteria": ["...", "..."],
+      "priority": 1,
+      "status": "backlog",
+      "attempts": 0,
+      "startedAt": null,
+      "verifyingAt": null,
+      "completedAt": null
+    }
+  ]
+}
+\`\`\`
 
-2. **Declare your choice**: Output \`WORKING_ON: <task-id>\` (e.g., \`WORKING_ON: task-abc123\`)
+## Task Priority
 
-3. **Implement the task**:
-   - Read and understand the existing codebase structure
-   - Implement the required changes
-   - Write clean, well-documented code
-   - Test your changes work as expected
-   - Commit your changes with clear, descriptive commit messages
+Pick ONE task to work on using this priority order:
+1. **in_progress** - Continue any task you previously started (unless truly blocked)
+2. **verifying** - Fix any task where verification failed
+3. **backlog** - Pick the highest priority (lowest number) task from backlog
 
-4. **Signal completion**: When done, output one of:
-   - \`TASK_COMPLETE\` - if all acceptance criteria are met
-   - \`TASK_BLOCKED: <reason>\` - if you cannot complete the task due to missing dependencies, unclear requirements, or external issues
+## Updating Task Status
+
+**IMPORTANT:** Before you start working on a task, you MUST update its status in \`.ralph/tasks.json\`:
+
+1. **Starting work**: Update the task to:
+   - \`status\`: "in_progress"
+   - \`attempts\`: increment by 1
+   - \`startedAt\`: current ISO timestamp (if not already set)
+
+2. **Ready to verify**: After implementing, update to:
+   - \`status\`: "verifying"
+   - \`verifyingAt\`: current ISO timestamp
+
+3. **Verification passed**: Update to:
+   - \`status\`: "done"
+   - \`completedAt\`: current ISO timestamp
+
+4. **Verification failed**: Keep as:
+   - \`status\`: "in_progress" (for retry next iteration)
+
+5. **Cannot complete**: Update to:
+   - \`status\`: "blocked"
+
+## Logging Changes
+
+Append log entries to \`.ralph/logs.json\` to record your progress. The file structure:
+\`\`\`json
+{
+  "entries": [
+    {
+      "timestamp": "2026-01-11T10:00:00.000Z",
+      "iteration": 1,
+      "taskId": "task-1",
+      "action": "status_change",
+      "from": "backlog",
+      "to": "in_progress",
+      "message": "Starting work on task"
+    }
+  ]
+}
+\`\`\`
+
+Log entry actions include:
+- \`status_change\` - When changing task status (include \`from\` and \`to\`)
+- \`commit\` - When making a commit
+- \`verification\` - When running verification
+- \`error\` - When encountering an error
+
+# Workflow
+
+1. Read \`.ralph/tasks.json\` to see all tasks
+2. Pick ONE task using the priority order above
+3. **Before coding**: Update the task status to "in_progress" in tasks.json and log the change
+4. Implement the task following acceptance criteria
+5. Commit your changes with descriptive messages (log each commit)
+6. Update status to "verifying" and run verification (e.g., \`npm run typecheck\`, \`npm run lint\`, \`npm run build\`)
+7. If verification passes: Update status to "done"
+8. If verification fails: Keep as "in_progress" for retry
+
+# Completion Signal
+
+After completing your work for this iteration, check the task statuses:
+
+- If **ALL tasks** are either "done" or "blocked", output: \`ALL_DONE\`
+- Otherwise, just complete your current task - the orchestrator will call you again
+
+**IMPORTANT:** Only output \`ALL_DONE\` when there are no more tasks in "backlog", "in_progress", or "verifying" status.
 
 # Important Notes
-- Work on exactly ONE task per session
+
+- Work on exactly ONE task per iteration
+- Always update task status BEFORE starting work
 - Do not push to remote - commits only
 - If tests exist, make sure they pass
 - Follow existing code patterns and conventions`
