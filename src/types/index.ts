@@ -1,6 +1,18 @@
 // Project types
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
+export type LoopStep = 'task_selection' | 'execution' | 'verification' | 'result'
+
+export interface LoopLogEntry {
+  id: string
+  iteration: number
+  timestamp: string
+  step: LoopStep
+  taskId?: string
+  taskTitle?: string
+  message: string
+  details?: string
+}
 
 // Repository type (top-level container for projects)
 export interface Repository {
@@ -59,6 +71,9 @@ export interface Project {
   workingBranch: string
   status: ProjectStatus
   tasks: Task[]
+  maxIterations: number
+  currentIteration: number
+  loopLogs: LoopLogEntry[]
   createdAt: string
   updatedAt: string
 }
