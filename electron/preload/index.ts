@@ -45,11 +45,8 @@ const api = {
   getTaskLogs: (projectId: string, taskId: string) =>
     ipcRenderer.invoke('logs:get', projectId, taskId),
 
-  // Loop logs
-  addLoopLog: (projectId: string, iteration: number, step: string, message: string, taskId?: string, details?: string) =>
-    ipcRenderer.invoke('project:addLoopLog', projectId, iteration, step, message, taskId, details),
-  getLoopLogs: (projectId: string) =>
-    ipcRenderer.invoke('project:getLoopLogs', projectId),
+  // Loop/iteration operations
+  // Note: Loop logs are now read from workspace .ralph/logs.json files
   clearLoopLogs: (projectId: string) =>
     ipcRenderer.invoke('project:clearLoopLogs', projectId),
 

@@ -548,34 +548,6 @@ class StateManager {
     return logEntry
   }
 
-  // Loop log operations
-  addLoopLog(
-    projectId: string,
-    iteration: number,
-    step: LoopStep,
-    message: string,
-    taskId?: string,
-    details?: string
-  ): LoopLogEntry | null {
-    const project = this.getProject(projectId)
-    if (!project) return null
-
-    const logEntry: LoopLogEntry = {
-      id: uuidv4(),
-      iteration,
-      timestamp: new Date().toISOString(),
-      step,
-      message,
-      ...(taskId && { taskId }),
-      ...(details && { details })
-    }
-
-    project.loopLogs.push(logEntry)
-    project.updatedAt = new Date().toISOString()
-    this.saveState()
-    return logEntry
-  }
-
   // Utility
   getDataPaths(): { data: string; workspaces: string; logs: string } {
     return {

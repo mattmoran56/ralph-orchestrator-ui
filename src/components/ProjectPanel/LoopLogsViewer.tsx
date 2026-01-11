@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import type { LoopLogEntry, LoopStep } from '../../types'
+import type { LoopLogEntry } from '../../types'
 
 interface LoopLogsViewerProps {
   logs: LoopLogEntry[]
@@ -7,9 +7,12 @@ interface LoopLogsViewerProps {
   maxIterations: number
 }
 
-// Step type styling configuration
-const stepConfig: Record<LoopStep, { color: string; bgColor: string; darkBgColor: string; icon: JSX.Element }> = {
-  task_selection: {
+// Action type styling configuration for workspace logs
+// Maps action types to visual styles
+type ActionType = 'status_change' | 'commit' | 'verification' | 'error' | 'default'
+
+const actionConfig: Record<ActionType, { color: string; bgColor: string; darkBgColor: string; icon: JSX.Element }> = {
+  status_change: {
     color: 'text-blue-700 dark:text-blue-300',
     bgColor: 'bg-blue-100',
     darkBgColor: 'dark:bg-blue-900/50',
@@ -19,7 +22,7 @@ const stepConfig: Record<LoopStep, { color: string; bgColor: string; darkBgColor
       </svg>
     )
   },
-  execution: {
+  commit: {
     color: 'text-amber-700 dark:text-amber-300',
     bgColor: 'bg-amber-100',
     darkBgColor: 'dark:bg-amber-900/50',
@@ -39,7 +42,17 @@ const stepConfig: Record<LoopStep, { color: string; bgColor: string; darkBgColor
       </svg>
     )
   },
-  result: {
+  error: {
+    color: 'text-red-700 dark:text-red-300',
+    bgColor: 'bg-red-100',
+    darkBgColor: 'dark:bg-red-900/50',
+    icon: (
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    )
+  },
+  default: {
     color: 'text-green-700 dark:text-green-300',
     bgColor: 'bg-green-100',
     darkBgColor: 'dark:bg-green-900/50',
@@ -51,9 +64,19 @@ const stepConfig: Record<LoopStep, { color: string; bgColor: string; darkBgColor
   }
 }
 
-// Determine if a result entry indicates failure
-function isFailureResult(entry: LoopLogEntry): boolean {
-  if (entry.step !== 'result') return false
+// Get action type for styling (normalize action string to known types)
+function getActionType(action: string): ActionType {
+  const normalizedAction = action.toLowerCase()
+  if (normalizedAction === 'status_change') return 'status_change'
+  if (normalizedAction === 'commit') return 'commit'
+  if (normalizedAction === 'verification') return 'verification'
+  if (normalizedAction === 'error') return 'error'
+  return 'default'
+}
+
+// Determine if a log entry indicates failure/error
+function isFailureEntry(entry: LoopLogEntry): boolean {
+  if (entry.action === 'error') return true
   const lowerMessage = entry.message.toLowerCase()
   return lowerMessage.includes('fail') || lowerMessage.includes('error') || lowerMessage.includes('block')
 }
@@ -74,41 +97,50 @@ function formatTimestamp(timestamp: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// Generate a unique key for a log entry (since new format doesn't have id)
+function getLogEntryKey(entry: LoopLogEntry, index: number): string {
+  return `${entry.iteration}-${entry.timestamp}-${index}`
+}
+
 interface LogEntryRowProps {
   entry: LoopLogEntry
 }
 
 function LogEntryRow({ entry }: LogEntryRowProps) {
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false)
-  const isFailure = isFailureResult(entry)
+  const isFailure = isFailureEntry(entry)
 
-  // Override colors for failure results
-  const config = stepConfig[entry.step]
-  const colorClass = isFailure ? 'text-red-700 dark:text-red-300' : config.color
-  const bgClass = isFailure ? 'bg-red-100 dark:bg-red-900/50' : `${config.bgColor} ${config.darkBgColor}`
-  const icon = isFailure ? (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  ) : config.icon
+  // Get styling config based on action type
+  const actionType = getActionType(entry.action)
+  const config = actionConfig[isFailure ? 'error' : actionType]
+  const colorClass = config.color
+  const bgClass = `${config.bgColor} ${config.darkBgColor}`
+  const icon = config.icon
+
+  // Format status transition if present
+  const statusTransition = entry.from && entry.to ? `${entry.from} → ${entry.to}` : null
 
   return (
     <div className="py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
       <div className="flex items-start gap-2">
-        {/* Step badge */}
+        {/* Action badge */}
         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${bgClass} ${colorClass} shrink-0`}>
           {icon}
-          <span className="hidden sm:inline">{entry.step.replace('_', ' ')}</span>
+          <span className="hidden sm:inline">{entry.action.replace('_', ' ')}</span>
         </span>
 
-        {/* Message and timestamp */}
+        {/* Message and details */}
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-700 dark:text-gray-300 break-words">
             {entry.message}
           </p>
-          {entry.taskTitle && (
+          {statusTransition && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Task: {entry.taskTitle}
+              Status: {statusTransition}
+            </p>
+          )}
+          {entry.taskId && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Task: {entry.taskId}
             </p>
           )}
         </div>
@@ -118,31 +150,6 @@ function LogEntryRow({ entry }: LogEntryRowProps) {
           {formatTimestamp(entry.timestamp)}
         </span>
       </div>
-
-      {/* Expandable details */}
-      {entry.details && (
-        <div className="mt-1.5 ml-0">
-          <button
-            onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
-          >
-            <svg
-              className={`w-3 h-3 transition-transform ${isDetailsExpanded ? 'rotate-90' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            {isDetailsExpanded ? 'Hide details' : 'Show details'}
-          </button>
-          {isDetailsExpanded && (
-            <pre className="mt-1.5 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap font-mono">
-              {entry.details}
-            </pre>
-          )}
-        </div>
-      )}
     </div>
   )
 }
@@ -155,9 +162,9 @@ interface IterationGroupProps {
 }
 
 function IterationGroup({ iteration, entries, isExpanded, onToggle }: IterationGroupProps) {
-  // Get the latest entry's step for summary
+  // Get the latest entry for summary
   const latestEntry = entries[0]
-  const hasFailure = entries.some(isFailureResult)
+  const hasFailure = entries.some(isFailureEntry)
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg mb-2 overflow-hidden">
@@ -195,8 +202,8 @@ function IterationGroup({ iteration, entries, isExpanded, onToggle }: IterationG
       {/* Entries list */}
       {isExpanded && (
         <div className="px-3 bg-white dark:bg-gray-800">
-          {entries.map((entry) => (
-            <LogEntryRow key={entry.id} entry={entry} />
+          {entries.map((entry, index) => (
+            <LogEntryRow key={getLogEntryKey(entry, index)} entry={entry} />
           ))}
         </div>
       )}
