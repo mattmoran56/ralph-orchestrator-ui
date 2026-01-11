@@ -282,6 +282,15 @@ class StateManager {
     this.saveState()
   }
 
+  /**
+   * Reload state from file and notify renderers
+   */
+  reloadState(): AppState {
+    this.state = this.loadState()
+    this.notifyRenderers()
+    return this.state
+  }
+
   getSettings(): Settings {
     return this.state.settings
   }

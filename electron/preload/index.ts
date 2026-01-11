@@ -9,6 +9,7 @@ const api = {
   // State management (to be expanded in Phase 2)
   getState: () => ipcRenderer.invoke('state:get'),
   saveState: (state: unknown) => ipcRenderer.invoke('state:save', state),
+  reloadState: () => ipcRenderer.invoke('state:reload'),
 
   // Project operations (to be expanded in Phase 3+)
   createProject: (project: unknown) => ipcRenderer.invoke('project:create', project),

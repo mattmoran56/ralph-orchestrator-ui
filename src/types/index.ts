@@ -153,6 +153,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getState: () => Promise<AppState>
   saveState: (state: AppState) => Promise<void>
+  reloadState: () => Promise<AppState>
   // Repository operations
   listGitHubRepos: () => Promise<GitHubRepo[]>
   getRepositories: () => Promise<Repository[]>

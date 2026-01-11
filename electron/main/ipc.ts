@@ -25,6 +25,10 @@ ipcMain.handle('state:save', (_event, state) => {
   stateManager.setState(state)
 })
 
+ipcMain.handle('state:reload', () => {
+  return stateManager.reloadState()
+})
+
 // Settings operations
 ipcMain.handle('settings:get', () => {
   return stateManager.getSettings()
