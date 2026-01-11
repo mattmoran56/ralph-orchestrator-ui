@@ -71,7 +71,21 @@ ipcMain.handle('task:create', (_event, projectId: string, input) => {
 })
 
 ipcMain.handle('task:update', (_event, projectId: string, taskId: string, updates) => {
-  return stateManager.updateTask(projectId, taskId, updates)
+  const result = stateManager.updateTask(projectId, taskId, updates)
+
+  // If a task was moved to backlog and project is not running, reset project to idle
+  // This allows restarting completed/failed projects by moving tasks back to backlog
+  if (updates.status === 'backlog') {
+    const project = stateManager.getProject(projectId)
+    if (project && project.status !== 'running') {
+      const hasBacklogTasks = project.tasks.some((t) => t.status === 'backlog')
+      if (hasBacklogTasks) {
+        stateManager.updateProject(projectId, { status: 'idle' })
+      }
+    }
+  }
+
+  return result
 })
 
 ipcMain.handle('task:delete', (_event, projectId: string, taskId: string) => {
