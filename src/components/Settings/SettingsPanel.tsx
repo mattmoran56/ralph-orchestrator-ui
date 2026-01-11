@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { GitHubAuthStatus } from '../../types'
 
-interface SettingsPanelProps {
-  onClose: () => void
-}
-
-export function SettingsPanel({ onClose }: SettingsPanelProps) {
+export function SettingsPanel() {
   const [githubStatus, setGitHubStatus] = useState<GitHubAuthStatus | null>(null)
   const [claudeAvailable, setClaudeAvailable] = useState<boolean | null>(null)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
@@ -38,63 +34,70 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Settings</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          Settings
+        </h1>
+      </div>
 
-        <div className="p-4 space-y-6">
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-2xl space-y-8">
           {/* Claude CLI Status */}
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
               Claude CLI
-            </h4>
-            <div className="flex items-center gap-2">
+            </h2>
+            <div className="flex items-center gap-3">
               {claudeAvailable === null ? (
                 <span className="text-sm text-gray-500">Checking...</span>
               ) : claudeAvailable ? (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
                   <span className="text-sm text-green-600 dark:text-green-400">
                     Installed and available
                   </span>
                 </>
               ) : (
                 <>
-                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
                   <span className="text-sm text-red-600 dark:text-red-400">
                     Not found - please install Claude CLI
                   </span>
                 </>
               )}
             </div>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              The Claude CLI is required to run AI-powered tasks. Install it from{' '}
+              <a
+                href="https://claude.ai/cli"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ralph-600 hover:text-ralph-700"
+              >
+                claude.ai/cli
+              </a>
+            </p>
           </div>
 
           {/* GitHub CLI Status */}
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
               GitHub CLI
-            </h4>
+            </h2>
             {githubStatus === null ? (
               <span className="text-sm text-gray-500">Checking...</span>
             ) : !githubStatus.installed ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500" />
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
                   <span className="text-sm text-red-600 dark:text-red-400">
                     Not installed
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   Install GitHub CLI to enable automatic PR creation.{' '}
                   <a
                     href="https://cli.github.com"
@@ -107,20 +110,20 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </p>
               </div>
             ) : !githubStatus.authenticated ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-yellow-500" />
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500" />
                   <span className="text-sm text-yellow-600 dark:text-yellow-400">
                     Installed but not authenticated
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   Authenticate with GitHub to enable automatic PR creation when projects complete.
                 </p>
                 <button
                   onClick={handleGitHubLogin}
                   disabled={isLoggingIn}
-                  className="btn-primary text-sm disabled:opacity-50"
+                  className="btn-primary disabled:opacity-50"
                 >
                   {isLoggingIn ? (
                     <>
@@ -141,28 +144,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
                 <span className="text-sm text-green-600 dark:text-green-400">
                   Authenticated and ready
                 </span>
               </div>
             )}
-          </div>
-
-          {/* Info */}
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-500">
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
               Ralph Orchestrator uses the GitHub CLI (gh) to create pull requests when projects complete.
-              Make sure both Claude CLI and GitHub CLI are installed and configured.
             </p>
           </div>
-        </div>
-
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-          <button onClick={onClose} className="btn-secondary">
-            Close
-          </button>
         </div>
       </div>
     </div>

@@ -85,26 +85,21 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   if (!project) return null
 
   return (
-    <>
-      {/* Semi-transparent backdrop - click to close */}
+    <div
+      ref={sidebarRef}
+      className="fixed top-8 right-0 bottom-0 bg-white dark:bg-gray-800 z-40 flex flex-col border-l border-gray-200 dark:border-gray-700"
+      style={{
+        width,
+        boxShadow: '-8px 0 30px -5px rgba(0, 0, 0, 0.15)'
+      }}
+    >
+      {/* Resize handle */}
       <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
+        className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-ralph-500 transition-colors ${
+          isResizing ? 'bg-ralph-500' : 'bg-transparent'
+        }`}
+        onMouseDown={handleMouseDown}
       />
-
-      {/* Sidebar panel */}
-      <div
-        ref={sidebarRef}
-        className="fixed top-8 right-0 bottom-0 bg-white dark:bg-gray-800 shadow-2xl z-50 flex flex-col"
-        style={{ width }}
-      >
-        {/* Resize handle */}
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-ralph-500 transition-colors ${
-            isResizing ? 'bg-ralph-500' : 'bg-transparent'
-          }`}
-          onMouseDown={handleMouseDown}
-        />
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
@@ -207,7 +202,6 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             />
           </div>
         </div>
-      </div>
-    </>
+    </div>
   )
 }
