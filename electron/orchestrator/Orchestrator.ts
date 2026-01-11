@@ -854,6 +854,9 @@ You must choose ONE task to work on and complete it. Follow these steps:
     const stateManager = getStateManager()
     stateManager.updateProject(projectId, { status: 'idle' })
 
+    // Stop watching workspace files
+    stateManager.unwatchWorkspace(projectId)
+
     // If there was a task in progress, move it back to backlog
     if (orchestratorState.currentTaskId) {
       const project = stateManager.getProject(projectId)
@@ -886,6 +889,9 @@ You must choose ONE task to work on and complete it. Follow these steps:
 
     const stateManager = getStateManager()
     stateManager.updateProject(projectId, { status: 'paused' })
+
+    // Stop watching workspace files
+    stateManager.unwatchWorkspace(projectId)
 
     return true
   }
