@@ -244,7 +244,7 @@ class Orchestrator {
     })
 
     // Build the prompt
-    const prompt = this.buildTaskPrompt(project, task)
+    const prompt = this.buildTaskPrompt(project)
 
     // Get log file path
     const logFilePath = processManager.getLogFilePath(project.id, task.id)
@@ -376,19 +376,71 @@ class Orchestrator {
   }
 
   /**
-   * Build the prompt for a task
+   * Build the prompt for all tasks, letting Claude choose which to work on
    */
-  private buildTaskPrompt(project: Project, task: Task): string {
-    const otherTasks = project.tasks
-      .filter((t) => t.id !== task.id)
-      .map((t) => `- [${t.status}] ${t.title}`)
-      .join('\n')
+  private buildTaskPrompt(project: Project): string {
+    // Group tasks by status
+    const inProgressTasks = project.tasks.filter((t) => t.status === 'in_progress')
+    const verifyingTasks = project.tasks.filter((t) => t.status === 'verifying')
+    const backlogTasks = project.tasks
+      .filter((t) => t.status === 'backlog')
+      .sort((a, b) => a.priority - b.priority)
+    const doneTasks = project.tasks.filter((t) => t.status === 'done')
+    const blockedTasks = project.tasks.filter((t) => t.status === 'blocked')
 
-    const criteriaList = task.acceptanceCriteria
-      .map((c, i) => `${i + 1}. ${c}`)
-      .join('\n')
+    // Helper to format a single task
+    const formatTask = (task: Task): string => {
+      const criteria = task.acceptanceCriteria.length > 0
+        ? task.acceptanceCriteria.map((c, i) => `   ${i + 1}. ${c}`).join('\n')
+        : '   No specific criteria'
+      return `[${task.id}] ${task.title}
+   Description: ${task.description}
+   Acceptance Criteria:
+${criteria}`
+    }
+
+    // Build task sections
+    let taskSections = ''
+
+    if (inProgressTasks.length > 0) {
+      taskSections += `## In Progress (continue these unless blocked)
+${inProgressTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (verifyingTasks.length > 0) {
+      taskSections += `## Needs Verification (verification failed, fix issues)
+${verifyingTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (backlogTasks.length > 0) {
+      taskSections += `## Backlog (sorted by priority, pick one if no in-progress tasks)
+${backlogTasks.map(formatTask).join('\n\n')}
+
+`
+    }
+
+    if (doneTasks.length > 0) {
+      taskSections += `## Completed (for context only)
+${doneTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
+
+`
+    }
+
+    if (blockedTasks.length > 0) {
+      taskSections += `## Blocked (do not work on these)
+${blockedTasks.map((t) => `[${t.id}] ${t.title}`).join('\n')}
+
+`
+    }
 
     return `# Project Context
+
+**Project:** ${project.name}
+**Description:** ${project.description}
 
 ${project.productBrief || 'No product brief provided.'}
 
@@ -396,33 +448,33 @@ ${project.productBrief || 'No product brief provided.'}
 
 ${project.solutionBrief || 'No solution brief provided.'}
 
-# Current Task
+# All Tasks
 
-**Title:** ${task.title}
-**Description:** ${task.description}
-
-## Acceptance Criteria
-${criteriaList || 'No specific criteria - use your best judgment.'}
-
+${taskSections}
 # Instructions
 
-Work through this task completely. Follow these guidelines:
+You must choose ONE task to work on and complete it. Follow these steps:
 
-1. Read and understand the existing codebase structure
-2. Implement the required changes
-3. Write clean, well-documented code
-4. Test your changes work as expected
-5. Commit your changes with clear, descriptive commit messages
+1. **Choose a task**: Pick ONE task to work on using this priority:
+   - First: Continue any "In Progress" task (unless truly blocked)
+   - Second: Fix any "Needs Verification" task
+   - Third: Pick the highest priority task from "Backlog"
 
-When you have completed the task and believe all acceptance criteria are met, output: TASK_COMPLETE
+2. **Declare your choice**: Output \`WORKING_ON: <task-id>\` (e.g., \`WORKING_ON: task-abc123\`)
 
-If you encounter a blocker that prevents you from completing the task (missing dependencies, unclear requirements, external service issues), output: TASK_BLOCKED: [describe the blocker]
+3. **Implement the task**:
+   - Read and understand the existing codebase structure
+   - Implement the required changes
+   - Write clean, well-documented code
+   - Test your changes work as expected
+   - Commit your changes with clear, descriptive commit messages
 
-# Other Tasks (for context only - do NOT work on these)
-${otherTasks || 'No other tasks.'}
+4. **Signal completion**: When done, output one of:
+   - \`TASK_COMPLETE\` - if all acceptance criteria are met
+   - \`TASK_BLOCKED: <reason>\` - if you cannot complete the task due to missing dependencies, unclear requirements, or external issues
 
 # Important Notes
-- Focus only on the current task
+- Work on exactly ONE task per session
 - Do not push to remote - commits only
 - If tests exist, make sure they pass
 - Follow existing code patterns and conventions`
