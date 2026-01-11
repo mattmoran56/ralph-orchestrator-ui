@@ -68,8 +68,15 @@ class Orchestrator {
     }
     this.activeProjects.set(projectId, orchestratorState)
 
-    // Update project status
-    stateManager.updateProject(projectId, { status: 'running' })
+    // Reset currentIteration only if starting from 'idle' (fresh start)
+    // If resuming from 'paused', keep the current iteration count
+    if (project.status === 'idle') {
+      stateManager.updateProject(projectId, { status: 'running', currentIteration: 0 })
+      this.log(projectId, 'Starting fresh, iteration counter reset to 0')
+    } else {
+      stateManager.updateProject(projectId, { status: 'running' })
+      this.log(projectId, `Resuming from iteration ${project.currentIteration}`)
+    }
 
     // Start the orchestration loop
     this.runLoop(projectId).catch((error) => {
@@ -113,6 +120,19 @@ class Orchestrator {
       // Refresh project state
       project = stateManager.getProject(projectId)
       if (!project) break
+
+      // Increment iteration counter at the start of each loop iteration
+      const newIteration = project.currentIteration + 1
+      stateManager.updateProject(projectId, { currentIteration: newIteration })
+      this.log(projectId, `Starting iteration ${newIteration} of ${project.maxIterations}`)
+
+      // Check if max iterations exceeded
+      if (newIteration > project.maxIterations) {
+        this.log(projectId, `Max iterations (${project.maxIterations}) reached, pausing project`)
+        stateManager.updateProject(projectId, { status: 'paused' })
+        orchestratorState.status = 'paused'
+        break
+      }
 
       // Check if paused or stopped
       if (project.status === 'paused' || project.status === 'idle') {
