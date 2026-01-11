@@ -26,9 +26,6 @@ export interface ClaudeProcess {
 export interface ProcessResult {
   success: boolean
   output: string
-  taskComplete: boolean
-  taskBlocked: boolean
-  blockedReason?: string
 }
 
 class ProcessManager {
@@ -154,7 +151,9 @@ class ProcessManager {
   }
 
   /**
-   * Wait for a process to complete and parse the result
+   * Wait for a process to complete
+   * Returns the raw output - task state parsing is no longer needed
+   * since Claude manages its own task state via workspace files
    */
   async waitForProcess(processId: string): Promise<ProcessResult> {
     const claudeProcess = this.processes.get(processId)
@@ -162,90 +161,28 @@ class ProcessManager {
     if (!claudeProcess) {
       return {
         success: false,
-        output: '',
-        taskComplete: false,
-        taskBlocked: false
+        output: ''
       }
     }
 
     return new Promise((resolve) => {
       if (claudeProcess.status !== 'running') {
         // Already completed
-        resolve(this.parseProcessResult(claudeProcess))
+        resolve({
+          success: claudeProcess.status === 'completed',
+          output: claudeProcess.output
+        })
         return
       }
 
       // Listen for PTY exit
       claudeProcess.ptyProcess.onExit(() => {
-        resolve(this.parseProcessResult(claudeProcess))
+        resolve({
+          success: claudeProcess.status === 'completed',
+          output: claudeProcess.output
+        })
       })
     })
-  }
-
-  /**
-   * Parse the process output to determine task status
-   */
-  private parseProcessResult(claudeProcess: ClaudeProcess): ProcessResult {
-    const output = claudeProcess.output
-
-    // Extract the final result from stream-json output
-    // The result object contains Claude's final response
-    let resultText = ''
-    const lines = output.split('\n')
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim()
-      if (line.startsWith('{"type":"result"')) {
-        try {
-          const resultObj = JSON.parse(line)
-          resultText = resultObj.result || ''
-          break
-        } catch {
-          // Not valid JSON, continue searching
-        }
-      }
-    }
-
-    // If no result object found, fall back to checking last assistant message
-    if (!resultText) {
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim()
-        if (line.startsWith('{"type":"assistant"')) {
-          try {
-            const msgObj = JSON.parse(line)
-            const content = msgObj.message?.content
-            if (Array.isArray(content)) {
-              for (const item of content) {
-                if (item.type === 'text' && item.text) {
-                  resultText = item.text
-                  break
-                }
-              }
-            }
-            if (resultText) break
-          } catch {
-            // Not valid JSON, continue searching
-          }
-        }
-      }
-    }
-
-    // Check for task completion/blocked signals in the result text only
-    const isComplete = resultText.includes('TASK_COMPLETE')
-    const isBlocked = resultText.includes('TASK_BLOCKED')
-
-    let blockedReason: string | undefined
-    if (isBlocked) {
-      const blockMatch = resultText.match(/TASK_BLOCKED:\s*(.+?)(?:\n|$)/i)
-      blockedReason = blockMatch?.[1]?.trim() || 'Unknown reason'
-    }
-
-    return {
-      success: claudeProcess.status === 'completed',
-      output,
-      taskComplete: isComplete && !isBlocked,
-      taskBlocked: isBlocked,
-      blockedReason
-    }
   }
 
   /**
