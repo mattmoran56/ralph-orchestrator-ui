@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+@layer base {
+  body {
+    @apply text-gray-900 dark:text-gray-100;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+}
+
+@layer components {
+  /* Draggable region for title bar */
+  .draggable {
+    -webkit-app-region: drag;
+  }
+
+  .non-draggable {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Kanban column styles */
+  .kanban-column {
+    @apply flex-shrink-0 w-72 bg-gray-100 dark:bg-gray-800 rounded-lg p-3;
+  }
+
+  /* Task card styles */
+  .task-card {
+    @apply bg-white dark:bg-gray-700 rounded-lg shadow-sm p-3 mb-2 cursor-pointer
+           hover:shadow-md transition-shadow duration-200
+           border border-gray-200 dark:border-gray-600;
+  }
+
+  .task-card.dragging {
+    @apply shadow-lg opacity-90;
+  }
+
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-badge.backlog {
+    @apply bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300;
+  }
+
+  .status-badge.in-progress {
+    @apply bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300;
+  }
+
+  .status-badge.verifying {
+    @apply bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300;
+  }
+
+  .status-badge.done {
+    @apply bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300;
+  }
+
+  .status-badge.blocked {
+    @apply bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300;
+  }
+
+  /* Button styles */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-md font-medium
+           transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply btn bg-ralph-600 text-white hover:bg-ralph-700 focus:ring-ralph-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-gray-200 text-gray-700 hover:bg-gray-300 focus:ring-gray-500
+           dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+
+  .btn-icon {
+    @apply p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md
+           bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+           focus:outline-none focus:ring-2 focus:ring-ralph-500 focus:border-transparent;
+  }
+
+  .textarea {
+    @apply input resize-none;
+  }
+
+  /* Log viewer styles */
+  .log-viewer {
+    @apply font-mono text-xs bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto;
+  }
+
+  .log-line {
+    @apply whitespace-pre-wrap;
+  }
+
+  .log-timestamp {
+    @apply text-gray-500;
+  }
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-500;
+}
