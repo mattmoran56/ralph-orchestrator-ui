@@ -176,12 +176,14 @@ export interface ElectronAPI {
   // Loop/iteration operations
   // Note: Loop logs are now read from workspace .ralph/logs.json files
   clearLoopLogs: (projectId: string) => Promise<Project | null>
+  getWorkspaceLogs: (projectId: string) => Promise<LoopLogEntry[]>
   // GitHub auth
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
   loginToGitHub: () => Promise<{ success: boolean; error?: string }>
   // Event subscriptions
   onStateChange: (callback: (state: AppState) => void) => () => void
   onLogUpdate: (callback: (data: { projectId: string; taskId: string; log: string }) => void) => () => void
+  onWorkspaceLogsChange: (callback: (data: { projectId: string; entryCount: number }) => void) => () => void
 }
 
 // Extend Window interface

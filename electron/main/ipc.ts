@@ -298,6 +298,16 @@ ipcMain.handle('project:clearLoopLogs', (_event, projectId: string) => {
   return stateManager.updateProject(projectId, { currentIteration: 0 })
 })
 
+// Get workspace logs from .ralph/logs.json
+ipcMain.handle('project:getWorkspaceLogs', (_event, projectId: string) => {
+  const logsData = stateManager.readWorkspaceLogs(projectId)
+  if (!logsData) {
+    // Return empty array if logs.json doesn't exist yet
+    return []
+  }
+  return logsData.entries
+})
+
 // Orchestrator operations
 ipcMain.handle('orchestrator:start', async (_event, projectId: string) => {
   const orchestrator = getOrchestrator()

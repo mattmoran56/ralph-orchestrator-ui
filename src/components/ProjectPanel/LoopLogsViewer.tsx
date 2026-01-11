@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import type { LoopLogEntry } from '../../types'
 
 interface LoopLogsViewerProps {
-  logs: LoopLogEntry[]
+  projectId: string
   currentIteration: number
   maxIterations: number
 }
@@ -211,7 +211,59 @@ function IterationGroup({ iteration, entries, isExpanded, onToggle }: IterationG
   )
 }
 
-export function LoopLogsViewer({ logs, currentIteration, maxIterations }: LoopLogsViewerProps) {
+// Check if we're running in Electron
+const isElectron = () => typeof window !== 'undefined' && window.electronAPI !== undefined
+
+export function LoopLogsViewer({ projectId, currentIteration, maxIterations }: LoopLogsViewerProps) {
+  const [logs, setLogs] = useState<LoopLogEntry[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch logs from workspace via IPC
+  const fetchLogs = useCallback(async () => {
+    if (!isElectron()) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const workspaceLogs = await window.electronAPI.getWorkspaceLogs(projectId)
+      setLogs(workspaceLogs)
+    } catch (error) {
+      console.error('Failed to fetch workspace logs:', error)
+      setLogs([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [projectId])
+
+  // Fetch logs on mount and when projectId changes
+  useEffect(() => {
+    fetchLogs()
+  }, [fetchLogs])
+
+  // Subscribe to workspace logs changes
+  useEffect(() => {
+    if (!isElectron()) return
+
+    const unsubscribe = window.electronAPI.onWorkspaceLogsChange((data) => {
+      if (data.projectId === projectId) {
+        // Re-fetch logs when workspace logs change
+        fetchLogs()
+      }
+    })
+
+    // Also listen for state changes (which include file watcher updates)
+    const unsubscribeState = window.electronAPI.onStateChange(() => {
+      // Re-fetch logs when state changes (file watcher may have detected changes)
+      fetchLogs()
+    })
+
+    return () => {
+      unsubscribe()
+      unsubscribeState()
+    }
+  }, [projectId, fetchLogs])
+
   // Group logs by iteration
   const groupedLogs = useMemo(() => {
     const groups = new Map<number, LoopLogEntry[]>()
@@ -238,7 +290,7 @@ export function LoopLogsViewer({ logs, currentIteration, maxIterations }: LoopLo
   })
 
   // Update expanded state when new iteration arrives
-  useMemo(() => {
+  useEffect(() => {
     if (latestIteration !== null && !expandedIterations.has(latestIteration)) {
       setExpandedIterations(new Set([latestIteration]))
     }
@@ -258,6 +310,18 @@ export function LoopLogsViewer({ logs, currentIteration, maxIterations }: LoopLo
 
   // Calculate progress percentage
   const progressPercent = maxIterations > 0 ? Math.min((currentIteration / maxIterations) * 100, 100) : 0
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="w-8 h-8 border-2 border-ralph-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Loading logs...
+        </p>
+      </div>
+    )
+  }
 
   // Empty state
   if (logs.length === 0) {

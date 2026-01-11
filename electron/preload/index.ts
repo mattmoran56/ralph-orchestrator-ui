@@ -49,6 +49,8 @@ const api = {
   // Note: Loop logs are now read from workspace .ralph/logs.json files
   clearLoopLogs: (projectId: string) =>
     ipcRenderer.invoke('project:clearLoopLogs', projectId),
+  getWorkspaceLogs: (projectId: string) =>
+    ipcRenderer.invoke('project:getWorkspaceLogs', projectId),
 
   // Event subscriptions
   onStateChange: (callback: (state: unknown) => void) => {
@@ -67,6 +69,12 @@ const api = {
     const subscription = (_event: Electron.IpcRendererEvent, data: { projectId: string; message: string; timestamp: string }) => callback(data)
     ipcRenderer.on('orchestrator:log', subscription)
     return () => ipcRenderer.removeListener('orchestrator:log', subscription)
+  },
+
+  onWorkspaceLogsChange: (callback: (data: { projectId: string; entryCount: number }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: { projectId: string; entryCount: number }) => callback(data)
+    ipcRenderer.on('workspace:logsChanged', subscription)
+    return () => ipcRenderer.removeListener('workspace:logsChanged', subscription)
   }
 }
 

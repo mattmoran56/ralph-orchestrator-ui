@@ -306,7 +306,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
           /* Logs tab */
           <div className="flex-1 flex flex-col overflow-hidden">
             <LoopLogsViewer
-              logs={project.loopLogs || []}
+              projectId={projectId}
               currentIteration={project.currentIteration || 0}
               maxIterations={project.maxIterations || 50}
             />
