@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronProjects } from '../../hooks/useElectronSync'
 import type { Project, ProjectStatus } from '../../types'
@@ -17,7 +17,7 @@ interface ProjectGroup {
 
 export function ProjectList({ isSettingsSelected, onSettingsClick, onProjectCreated }: ProjectListProps) {
   const { projects, selectedProjectId, selectProject } = useProjectStore()
-  const { createProject } = useElectronProjects()
+  const { createProject, deleteProject } = useElectronProjects()
   const [showNewForm, setShowNewForm] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
@@ -87,6 +87,7 @@ export function ProjectList({ isSettingsSelected, onSettingsClick, onProjectCrea
                 projects={group.projects}
                 selectedProjectId={selectedProjectId}
                 onSelect={selectProject}
+                onDelete={deleteProject}
                 isCollapsed={collapsedSections.has(group.title)}
                 onToggle={() => toggleSection(group.title)}
               />
@@ -133,6 +134,7 @@ function ProjectSection({
   projects,
   selectedProjectId,
   onSelect,
+  onDelete,
   isCollapsed,
   onToggle
 }: {
@@ -140,6 +142,7 @@ function ProjectSection({
   projects: Project[]
   selectedProjectId: string | null
   onSelect: (id: string) => void
+  onDelete: (id: string) => Promise<void>
   isCollapsed: boolean
   onToggle: () => void
 }) {
@@ -174,6 +177,7 @@ function ProjectSection({
               project={project}
               isSelected={project.id === selectedProjectId}
               onSelect={() => onSelect(project.id)}
+              onDelete={() => onDelete(project.id)}
             />
           ))}
         </div>
@@ -185,12 +189,18 @@ function ProjectSection({
 function ProjectItem({
   project,
   isSelected,
-  onSelect
+  onSelect,
+  onDelete
 }: {
   project: Project
   isSelected: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
   const statusIndicator = {
     idle: 'bg-gray-400',
     paused: 'bg-gray-400',
@@ -199,18 +209,103 @@ function ProjectItem({
     failed: 'bg-red-500'
   }
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false)
+      }
+    }
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMenu])
+
+  const handleDelete = async () => {
+    await onDelete()
+    setShowDeleteConfirm(false)
+  }
+
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors text-left ${
-        isSelected
-          ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
-      }`}
-    >
-      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusIndicator[project.status]}`} />
-      <span className="text-sm truncate">{project.name}</span>
-    </button>
+    <>
+      <div
+        className={`group w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors text-left ${
+          isSelected
+            ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
+        }`}
+      >
+        <button
+          onClick={onSelect}
+          className="flex items-center gap-2 flex-1 min-w-0"
+        >
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusIndicator[project.status]}`} />
+          <span className="text-sm truncate">{project.name}</span>
+        </button>
+
+        {/* More menu */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowMenu(!showMenu)
+            }}
+            className="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            </svg>
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowMenu(false)
+                  setShowDeleteConfirm(true)
+                }}
+                className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Delete Project
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              Delete Project
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to delete "{project.name}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="btn-danger"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
