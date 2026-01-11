@@ -2,15 +2,15 @@ import { useEffect, useCallback } from 'react'
 import { useProjectStore } from '../stores/projectStore'
 import type { AppState } from '../types'
 
-// Check if we're running in Electron
-const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
+// Check if we're running in Electron (evaluated at runtime, not module load)
+const isElectron = () => typeof window !== 'undefined' && window.electronAPI !== undefined
 
 export function useElectronSync() {
   const { setProjects, setSettings, setLoading, setError } = useProjectStore()
 
   // Load initial state from Electron
   const loadState = useCallback(async () => {
-    if (!isElectron) return
+    if (!isElectron()) return
 
     try {
       setLoading(true)
@@ -29,7 +29,7 @@ export function useElectronSync() {
 
   // Subscribe to state changes from main process
   useEffect(() => {
-    if (!isElectron) return
+    if (!isElectron()) return
 
     loadState()
 
@@ -53,7 +53,7 @@ export function useElectronProjects() {
 
   const createProject = useCallback(
     async (input: Parameters<typeof store.addProject>[0]) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           const project = await window.electronAPI.createProject(input)
           // Store will be updated via state change event
@@ -71,7 +71,7 @@ export function useElectronProjects() {
 
   const updateProject = useCallback(
     async (id: string, updates: Parameters<typeof store.updateProject>[1]) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           await window.electronAPI.updateProject(id, updates)
           // Store will be updated via state change event
@@ -88,7 +88,7 @@ export function useElectronProjects() {
 
   const deleteProject = useCallback(
     async (id: string) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           await window.electronAPI.deleteProject(id)
           // Store will be updated via state change event
@@ -104,7 +104,7 @@ export function useElectronProjects() {
   )
 
   const startProject = useCallback(async (id: string) => {
-    if (isElectron) {
+    if (isElectron()) {
       try {
         await window.electronAPI.startProject(id)
       } catch (error) {
@@ -117,7 +117,7 @@ export function useElectronProjects() {
   }, [store])
 
   const stopProject = useCallback(async (id: string) => {
-    if (isElectron) {
+    if (isElectron()) {
       try {
         await window.electronAPI.stopProject(id)
       } catch (error) {
@@ -145,7 +145,7 @@ export function useElectronTasks() {
 
   const createTask = useCallback(
     async (projectId: string, input: Parameters<typeof store.addTask>[1]) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           const task = await window.electronAPI.createTask(projectId, input)
           // Store will be updated via state change event
@@ -167,7 +167,7 @@ export function useElectronTasks() {
       taskId: string,
       updates: Parameters<typeof store.updateTask>[2]
     ) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           await window.electronAPI.updateTask(projectId, taskId, updates)
           // Store will be updated via state change event
@@ -184,7 +184,7 @@ export function useElectronTasks() {
 
   const deleteTask = useCallback(
     async (projectId: string, taskId: string) => {
-      if (isElectron) {
+      if (isElectron()) {
         try {
           await window.electronAPI.deleteTask(projectId, taskId)
           // Store will be updated via state change event
@@ -200,7 +200,7 @@ export function useElectronTasks() {
   )
 
   const getTaskLogs = useCallback(async (projectId: string, taskId: string) => {
-    if (isElectron) {
+    if (isElectron()) {
       try {
         return await window.electronAPI.getTaskLogs(projectId, taskId)
       } catch (error) {
