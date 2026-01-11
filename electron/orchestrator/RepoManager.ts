@@ -172,14 +172,33 @@ class RepoManager {
       return { success: false, output: '', error: 'Repository not cloned' }
     }
 
+    // First, check if branch exists on remote (from previous run)
+    const remoteExists = this.remoteBranchExists(projectId, repoUrl, branchName)
+
+    if (remoteExists) {
+      // Branch exists on remote - check it out and pull to continue from previous work
+      const checkoutRemote = this.execGit(`git checkout -b ${branchName} origin/${branchName}`, repoPath)
+      if (checkoutRemote.success) {
+        return { success: true, output: `Checked out existing remote branch ${branchName}` }
+      }
+      // If that failed, branch might exist locally too - just checkout and pull
+      const checkout = this.execGit(`git checkout ${branchName}`, repoPath)
+      if (checkout.success) {
+        this.execGit(`git pull origin ${branchName}`, repoPath)
+        return { success: true, output: `Switched to existing branch ${branchName} and pulled latest` }
+      }
+      return checkout
+    }
+
+    // Branch doesn't exist on remote - create from base branch
     // Checkout base branch first
     const checkoutBase = this.execGit(`git checkout ${baseBranch}`, repoPath)
     if (!checkoutBase.success) {
       return checkoutBase
     }
 
-    // Pull latest changes
-    const pull = this.execGit('git pull origin', repoPath)
+    // Pull latest changes from base
+    const pull = this.execGit(`git pull origin ${baseBranch}`, repoPath)
     if (!pull.success) {
       // Pull might fail if not on a tracking branch, continue anyway
       console.log('Pull warning:', pull.error)
@@ -188,7 +207,7 @@ class RepoManager {
     // Create and checkout new branch
     const createBranch = this.execGit(`git checkout -b ${branchName}`, repoPath)
     if (!createBranch.success) {
-      // Branch might already exist, try to just checkout
+      // Branch might already exist locally, try to just checkout
       const checkout = this.execGit(`git checkout ${branchName}`, repoPath)
       if (!checkout.success) {
         return checkout
