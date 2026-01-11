@@ -50,7 +50,7 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-full">
       {/* Header */}
       <div className="draggable border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <div className="flex items-center justify-between">
@@ -92,8 +92,8 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
       </div>
 
       {/* Kanban columns */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-4 h-full min-w-max">
+      <div className="overflow-x-auto p-4">
+        <div className="flex gap-4 min-w-max items-start">
           {columns.map((column) => (
             <KanbanColumn
               key={column.id}
