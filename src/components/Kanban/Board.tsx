@@ -163,7 +163,7 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
 }
 
 function KanbanColumn({
-  columnId,
+  columnId: _columnId,
   title,
   color,
   tasks,
