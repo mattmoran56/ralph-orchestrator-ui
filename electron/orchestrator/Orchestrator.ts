@@ -33,6 +33,18 @@ class Orchestrator {
   }
 
   /**
+   * Get the repository's default branch (e.g., main)
+   */
+  private getRepoDefaultBranch(project: Project): string {
+    const stateManager = getStateManager()
+    const repository = stateManager.getRepository(project.repositoryId)
+    if (!repository) {
+      throw new Error(`Repository not found for project ${project.id}`)
+    }
+    return repository.baseBranch
+  }
+
+  /**
    * Start orchestrating a project
    */
   async startProject(projectId: string): Promise<boolean> {
@@ -172,6 +184,7 @@ class Orchestrator {
   private async setupRepository(project: Project): Promise<{ success: boolean; error?: string }> {
     const repoManager = getRepoManager()
     const repoUrl = this.getRepoUrl(project)
+    const repoDefaultBranch = this.getRepoDefaultBranch(project)
 
     // Step 1: Clone the repository (uses default branch)
     if (!repoManager.workspaceExists(project.id, repoUrl)) {
@@ -187,12 +200,13 @@ class Orchestrator {
       await repoManager.cloneRepo(project.id, repoUrl) // This will fetch if exists
     }
 
-    // Step 2: Checkout or create the base branch
-    this.log(project.id, `Setting up base branch: ${project.baseBranch}`)
-    const baseBranchResult = repoManager.checkoutOrCreateBranch(
+    // Step 2: Checkout or create the base branch FROM the repository's default branch
+    this.log(project.id, `Setting up base branch: ${project.baseBranch} (from ${repoDefaultBranch})`)
+    const baseBranchResult = repoManager.checkoutOrCreateFromSource(
       project.id,
       repoUrl,
-      project.baseBranch
+      project.baseBranch,
+      repoDefaultBranch
     )
 
     if (!baseBranchResult.success) {
@@ -200,7 +214,20 @@ class Orchestrator {
     }
     this.log(project.id, baseBranchResult.output)
 
-    // Step 3: Create/checkout the working branch from base branch
+    // Step 3: If base branch already existed, merge in the latest from repo's default branch
+    if (baseBranchResult.output.includes('Switched to existing') ||
+        baseBranchResult.output.includes('Checked out remote')) {
+      this.log(project.id, `Merging latest ${repoDefaultBranch} into ${project.baseBranch}...`)
+      const mergeResult = repoManager.mergeBranch(project.id, repoUrl, repoDefaultBranch)
+      if (mergeResult.success) {
+        this.log(project.id, `Merged ${repoDefaultBranch} successfully`)
+      } else {
+        // Merge conflicts - log but continue (Claude can resolve if needed)
+        this.log(project.id, `Merge warning: ${mergeResult.error || 'conflicts may exist'}`)
+      }
+    }
+
+    // Step 4: Create/checkout the working branch from base branch
     this.log(project.id, `Setting up working branch: ${project.workingBranch}`)
     const workingBranchResult = repoManager.createBranch(
       project.id,
@@ -213,6 +240,15 @@ class Orchestrator {
       return { success: false, error: workingBranchResult.error }
     }
     this.log(project.id, workingBranchResult.output)
+
+    // Step 5: Merge the latest default branch into working branch too
+    this.log(project.id, `Ensuring working branch has latest ${repoDefaultBranch}...`)
+    const workingMergeResult = repoManager.mergeBranch(project.id, repoUrl, repoDefaultBranch)
+    if (workingMergeResult.success) {
+      this.log(project.id, `Working branch is up to date with ${repoDefaultBranch}`)
+    } else {
+      this.log(project.id, `Merge note: ${workingMergeResult.error || 'already up to date or conflicts'}`)
+    }
 
     return { success: true }
   }
@@ -712,6 +748,7 @@ You must choose ONE task to work on and complete it. Follow these steps:
     const stateManager = getStateManager()
     const repoManager = getRepoManager()
     const repoUrl = this.getRepoUrl(project)
+    const repoDefaultBranch = this.getRepoDefaultBranch(project)
 
     const completedTasks = project.tasks.filter((t) => t.status === 'done')
     const blockedTasks = project.tasks.filter((t) => t.status === 'blocked')
@@ -726,8 +763,8 @@ You must choose ONE task to work on and complete it. Follow these steps:
       return
     }
 
-    // Check if working branch has any commits ahead of base branch
-    const diffCheck = repoManager.getDiffFromBase(project.id, repoUrl, project.baseBranch)
+    // Check if working branch has any commits ahead of repo's default branch
+    const diffCheck = repoManager.getDiffFromBase(project.id, repoUrl, repoDefaultBranch)
     if (diffCheck.success && !diffCheck.output.trim()) {
       this.log(project.id, 'No changes to merge - skipping PR creation')
       stateManager.updateProject(project.id, { status: 'completed' })
@@ -737,21 +774,6 @@ You must choose ONE task to work on and complete it. Follow these steps:
     }
 
     this.log(project.id, 'Preparing to create PR...')
-
-    // Check if base branch exists on remote, push if not
-    if (!repoManager.remoteBranchExists(project.id, repoUrl, project.baseBranch)) {
-      this.log(project.id, `Base branch ${project.baseBranch} not on remote, pushing...`)
-      const basePushResult = repoManager.pushBranch(project.id, repoUrl, project.baseBranch)
-      if (!basePushResult.success) {
-        this.log(project.id, `Failed to push base branch: ${basePushResult.error}`)
-        stateManager.updateProject(project.id, { status: 'failed' })
-        this.log(project.id, 'Cleaning up workspace...')
-        repoManager.cleanupWorkspace(project.id)
-        this.activeProjects.delete(project.id)
-        return
-      }
-      this.log(project.id, 'Base branch pushed to remote')
-    }
 
     // Push the working branch
     const pushResult = repoManager.push(project.id, repoUrl, project.workingBranch)
@@ -776,13 +798,14 @@ You must choose ONE task to work on and complete it. Follow these steps:
 
     prBody += `\n\n## Project\n${project.description}\n\n---\nGenerated by Ralph Orchestrator`
 
-    // Create PR to merge working branch into base branch
+    // Create PR to merge working branch into repository's DEFAULT branch (e.g., main)
+    this.log(project.id, `Creating PR: ${project.workingBranch} -> ${repoDefaultBranch}`)
     const prResult = repoManager.createPullRequest(
       project.id,
       repoUrl,
       `[Ralph] ${project.name}`,
       prBody,
-      project.baseBranch
+      repoDefaultBranch
     )
 
     if (prResult.success) {

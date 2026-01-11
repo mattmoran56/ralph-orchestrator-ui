@@ -80,20 +80,32 @@ class RepoManager {
   async cloneRepo(projectId: string, repoUrl: string): Promise<GitResult> {
     const workspacePath = this.getProjectWorkspace(projectId)
     const repoPath = this.getRepoPath(projectId, repoUrl)
+    const gitPath = join(repoPath, '.git')
 
     // Create workspace directory
     if (!existsSync(workspacePath)) {
       mkdirSync(workspacePath, { recursive: true })
     }
 
-    // Check if repo already exists
-    if (existsSync(repoPath)) {
+    // Check if repo already exists AND is a valid git repo
+    if (existsSync(repoPath) && existsSync(gitPath)) {
       // Fetch latest changes instead
       const fetchResult = this.execGit('git fetch origin --prune', repoPath)
       if (!fetchResult.success) {
         return fetchResult
       }
       return { success: true, output: `Repository already exists at ${repoPath}. Fetched latest changes.` }
+    }
+
+    // If directory exists but isn't a valid git repo, clean it up
+    // Use shell rm -rf because Node's rmSync can't handle Electron's .asar files
+    if (existsSync(repoPath) && !existsSync(gitPath)) {
+      try {
+        execSync(`rm -rf "${repoPath}"`, { stdio: 'pipe' })
+      } catch {
+        // If rm fails, try Node's rmSync as fallback
+        rmSync(repoPath, { recursive: true, force: true })
+      }
     }
 
     // Clone the repository (default branch)
@@ -366,11 +378,12 @@ class RepoManager {
   }
 
   /**
-   * Check if workspace exists for a project
+   * Check if workspace exists for a project (must be a valid git repo)
    */
   workspaceExists(projectId: string, repoUrl: string): boolean {
     const repoPath = this.getRepoPath(projectId, repoUrl)
-    return existsSync(repoPath)
+    const gitPath = join(repoPath, '.git')
+    return existsSync(repoPath) && existsSync(gitPath)
   }
 
   /**
@@ -398,6 +411,82 @@ class RepoManager {
     }
 
     return this.execGit(`git push -u origin ${branchName}`, repoPath)
+  }
+
+  /**
+   * Merge a branch into the current branch
+   */
+  mergeBranch(projectId: string, repoUrl: string, sourceBranch: string): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    // Fetch latest from remote first
+    this.execGit('git fetch origin', repoPath)
+
+    // Try to merge the source branch (use origin/sourceBranch to get remote version)
+    const mergeResult = this.execGit(
+      `git merge origin/${sourceBranch} --no-edit -m "Merge ${sourceBranch} into current branch"`,
+      repoPath
+    )
+
+    return mergeResult
+  }
+
+  /**
+   * Checkout a branch, creating it from a source branch if it doesn't exist
+   */
+  checkoutOrCreateFromSource(
+    projectId: string,
+    repoUrl: string,
+    branchName: string,
+    sourceBranch: string
+  ): GitResult {
+    const repoPath = this.getRepoPath(projectId, repoUrl)
+
+    if (!existsSync(repoPath)) {
+      return { success: false, output: '', error: 'Repository not cloned' }
+    }
+
+    // First, try to checkout the branch if it exists locally
+    const checkoutLocal = this.execGit(`git checkout ${branchName}`, repoPath)
+    if (checkoutLocal.success) {
+      // Pull latest if tracking remote
+      this.execGit(`git pull origin ${branchName} --ff-only`, repoPath)
+      return { success: true, output: `Switched to existing branch ${branchName}` }
+    }
+
+    // Try to checkout from remote
+    const checkoutRemote = this.execGit(`git checkout -b ${branchName} origin/${branchName}`, repoPath)
+    if (checkoutRemote.success) {
+      return { success: true, output: `Checked out remote branch ${branchName}` }
+    }
+
+    // Branch doesn't exist locally or remotely - create from source branch
+    // First make sure we have the latest source branch
+    this.execGit('git fetch origin', repoPath)
+
+    // Create new branch from origin/sourceBranch
+    const createFromSource = this.execGit(
+      `git checkout -b ${branchName} origin/${sourceBranch}`,
+      repoPath
+    )
+    if (createFromSource.success) {
+      return { success: true, output: `Created new branch ${branchName} from ${sourceBranch}` }
+    }
+
+    // If that fails, try local source branch
+    const createFromLocalSource = this.execGit(
+      `git checkout -b ${branchName} ${sourceBranch}`,
+      repoPath
+    )
+    if (createFromLocalSource.success) {
+      return { success: true, output: `Created new branch ${branchName} from local ${sourceBranch}` }
+    }
+
+    return createFromLocalSource
   }
 }
 
