@@ -1,10 +1,8 @@
 import { ipcMain, app } from 'electron'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { join } from 'path'
 import { getStateManager } from '../orchestrator/StateManager'
 import { getOrchestrator } from '../orchestrator/Orchestrator'
 import { getProcessManager } from '../orchestrator/ProcessManager'
-import { getRepoManager } from '../orchestrator/RepoManager'
 
 // Initialize state manager
 const stateManager = getStateManager()
@@ -205,6 +203,42 @@ ipcMain.handle('github:login', async () => {
       resolve({ success: false, error: err.message })
     })
   })
+})
+
+ipcMain.handle('github:listRepos', async () => {
+  const { execSync } = require('child_process')
+
+  try {
+    // Check if gh CLI is installed
+    execSync('which gh', { stdio: 'pipe' })
+  } catch {
+    throw new Error('GitHub CLI (gh) is not installed')
+  }
+
+  try {
+    // List all accessible repositories with relevant fields
+    const output = execSync(
+      'gh repo list --json name,nameWithOwner,url,owner,isPrivate --limit 100',
+      { encoding: 'utf-8', stdio: 'pipe' }
+    )
+    return JSON.parse(output)
+  } catch (error) {
+    const err = error as { stderr?: string }
+    throw new Error(err.stderr || 'Failed to list GitHub repositories')
+  }
+})
+
+// Repository operations
+ipcMain.handle('repository:list', () => {
+  return stateManager.getRepositories()
+})
+
+ipcMain.handle('repository:create', (_event, input) => {
+  return stateManager.createRepository(input)
+})
+
+ipcMain.handle('repository:delete', (_event, id: string) => {
+  return stateManager.deleteRepository(id)
 })
 
 // Ensure directories exist

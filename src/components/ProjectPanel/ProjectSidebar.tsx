@@ -9,14 +9,14 @@ interface ProjectSidebarProps {
 }
 
 export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
-  const { getProject } = useProjectStore()
+  const { getProject, getRepository } = useProjectStore()
   const { updateProject, deleteProject } = useElectronProjects()
   const project = getProject(projectId)
+  const repository = project ? getRepository(project.repositoryId) : undefined
 
   const [width, setWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
   const [name, setName] = useState(project?.name || '')
-  const [repoUrl, setRepoUrl] = useState(project?.repoUrl || '')
   const [baseBranch, setBaseBranch] = useState(project?.baseBranch || '')
   const [description, setDescription] = useState(project?.description || '')
   const [showMenu, setShowMenu] = useState(false)
@@ -29,7 +29,6 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   useEffect(() => {
     if (project) {
       setName(project.name)
-      setRepoUrl(project.repoUrl)
       setBaseBranch(project.baseBranch)
       setDescription(project.description)
     }
@@ -37,7 +36,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
 
   // Auto-save with debounce
   const saveChanges = useCallback(
-    (updates: { name?: string; repoUrl?: string; baseBranch?: string; description?: string }) => {
+    (updates: { name?: string; baseBranch?: string; description?: string }) => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -190,18 +189,11 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
 
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Repository URL
+              Repository
             </label>
-            <input
-              type="text"
-              value={repoUrl}
-              onChange={(e) => {
-                setRepoUrl(e.target.value)
-                saveChanges({ repoUrl: e.target.value })
-              }}
-              className="input text-sm font-mono"
-              placeholder="https://github.com/user/repo.git"
-            />
+            <p className="text-sm text-gray-700 dark:text-gray-300 font-mono bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-md">
+              {repository?.nameWithOwner || 'Unknown repository'}
+            </p>
           </div>
 
           <div>

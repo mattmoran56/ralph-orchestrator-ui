@@ -2,6 +2,28 @@
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
 
+// Repository type (top-level container for projects)
+export interface Repository {
+  id: string
+  name: string                // e.g., "ralph-orchestrator-ui"
+  nameWithOwner: string       // e.g., "matt/ralph-orchestrator-ui"
+  url: string                 // e.g., "https://github.com/matt/ralph-orchestrator-ui"
+  owner: string               // e.g., "matt"
+  baseBranch: string          // e.g., "main"
+  isPrivate: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// GitHub repo from gh CLI (before being added to local state)
+export interface GitHubRepo {
+  name: string
+  nameWithOwner: string
+  url: string
+  owner: { login: string }
+  isPrivate: boolean
+}
+
 export interface LogEntry {
   timestamp: string
   filePath: string
@@ -28,12 +50,12 @@ export interface Task {
 
 export interface Project {
   id: string
+  repositoryId: string        // Reference to parent Repository
   name: string
   description: string
   productBrief: string
   solutionBrief: string
-  repoUrl: string
-  baseBranch: string
+  baseBranch: string          // Can override repository's baseBranch
   workingBranch: string
   status: ProjectStatus
   tasks: Task[]
@@ -49,17 +71,27 @@ export interface Settings {
 }
 
 export interface AppState {
+  repositories: Repository[]
   projects: Project[]
   settings: Settings
 }
 
 // Form types for creating/editing
+export interface CreateRepositoryInput {
+  name: string
+  nameWithOwner: string
+  url: string
+  owner: string
+  baseBranch: string
+  isPrivate: boolean
+}
+
 export interface CreateProjectInput {
+  repositoryId: string
   name: string
   description: string
   productBrief: string
   solutionBrief: string
-  repoUrl: string
   baseBranch: string
 }
 
@@ -75,7 +107,6 @@ export interface UpdateProjectInput {
   description?: string
   productBrief?: string
   solutionBrief?: string
-  repoUrl?: string
   baseBranch?: string
   status?: ProjectStatus
 }
@@ -105,19 +136,29 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getState: () => Promise<AppState>
   saveState: (state: AppState) => Promise<void>
+  // Repository operations
+  listGitHubRepos: () => Promise<GitHubRepo[]>
+  getRepositories: () => Promise<Repository[]>
+  createRepository: (input: CreateRepositoryInput) => Promise<Repository>
+  deleteRepository: (id: string) => Promise<void>
+  // Project operations
   createProject: (project: CreateProjectInput) => Promise<Project>
   updateProject: (id: string, updates: UpdateProjectInput) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
+  // Task operations
   createTask: (projectId: string, task: CreateTaskInput) => Promise<Task>
   updateTask: (projectId: string, taskId: string, updates: UpdateTaskInput) => Promise<Task>
   deleteTask: (projectId: string, taskId: string) => Promise<void>
+  // Orchestrator operations
   startProject: (projectId: string) => Promise<void>
   stopProject: (projectId: string) => Promise<void>
   pauseProject: (projectId: string) => Promise<void>
   getTaskLogs: (projectId: string, taskId: string) => Promise<string>
   isClaudeAvailable: () => Promise<boolean>
+  // GitHub auth
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
   loginToGitHub: () => Promise<{ success: boolean; error?: string }>
+  // Event subscriptions
   onStateChange: (callback: (state: AppState) => void) => () => void
   onLogUpdate: (callback: (data: { projectId: string; taskId: string; log: string }) => void) => () => void
 }

@@ -7,6 +7,18 @@ import { v4 as uuidv4 } from 'uuid'
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
 
+export interface Repository {
+  id: string
+  name: string
+  nameWithOwner: string
+  url: string
+  owner: string
+  baseBranch: string
+  isPrivate: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface LogEntry {
   timestamp: string
   filePath: string
@@ -33,11 +45,11 @@ export interface Task {
 
 export interface Project {
   id: string
+  repositoryId: string
   name: string
   description: string
   productBrief: string
   solutionBrief: string
-  repoUrl: string
   baseBranch: string
   workingBranch: string
   status: ProjectStatus
@@ -54,6 +66,7 @@ export interface Settings {
 }
 
 export interface AppState {
+  repositories: Repository[]
   projects: Project[]
   settings: Settings
 }
@@ -67,6 +80,7 @@ const defaultSettings: Settings = {
 }
 
 const defaultState: AppState = {
+  repositories: [],
   projects: [],
   settings: defaultSettings
 }
@@ -101,9 +115,18 @@ class StateManager {
     try {
       if (existsSync(this.statePath)) {
         const data = readFileSync(this.statePath, 'utf-8')
-        const parsed = JSON.parse(data) as AppState
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = JSON.parse(data) as any
+
+        // Check if migration is needed (old format has repoUrl on projects, no repositories array)
+        if (!parsed.repositories && parsed.projects?.length > 0 && parsed.projects[0]?.repoUrl) {
+          console.log('Migrating projects to repository structure...')
+          return this.migrateToRepositoryStructure(parsed)
+        }
+
         // Merge with defaults to ensure all fields exist
         return {
+          repositories: parsed.repositories || [],
           projects: parsed.projects || [],
           settings: { ...defaultSettings, ...parsed.settings }
         }
@@ -112,6 +135,77 @@ class StateManager {
       console.error('Failed to load state:', error)
     }
     return { ...defaultState }
+  }
+
+  private migrateToRepositoryStructure(oldState: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    projects: any[]
+    settings: Settings
+  }): AppState {
+    const repoMap = new Map<string, Repository>()
+    const migratedProjects: Project[] = []
+
+    for (const project of oldState.projects || []) {
+      if (!project.repoUrl) continue
+
+      let repository = repoMap.get(project.repoUrl)
+
+      if (!repository) {
+        // Extract repo info from URL
+        const { name, owner, nameWithOwner } = this.parseRepoUrl(project.repoUrl)
+
+        repository = {
+          id: uuidv4(),
+          name,
+          nameWithOwner,
+          url: project.repoUrl,
+          owner,
+          baseBranch: project.baseBranch || 'main',
+          isPrivate: false, // Unknown during migration
+          createdAt: project.createdAt,
+          updatedAt: new Date().toISOString()
+        }
+        repoMap.set(project.repoUrl, repository)
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { repoUrl, ...projectWithoutRepoUrl } = project
+      migratedProjects.push({
+        ...projectWithoutRepoUrl,
+        repositoryId: repository.id
+      })
+    }
+
+    const migratedState: AppState = {
+      repositories: Array.from(repoMap.values()),
+      projects: migratedProjects,
+      settings: { ...defaultSettings, ...oldState.settings }
+    }
+
+    console.log(`Migration complete: created ${repoMap.size} repositories from ${migratedProjects.length} projects`)
+
+    // Save the migrated state
+    writeFileSync(this.statePath, JSON.stringify(migratedState, null, 2))
+
+    return migratedState
+  }
+
+  private parseRepoUrl(url: string): { name: string; owner: string; nameWithOwner: string } {
+    // Handle both HTTPS and SSH URLs
+    // https://github.com/owner/repo.git or git@github.com:owner/repo.git
+    const httpsMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(\.git)?/)
+
+    if (httpsMatch) {
+      const owner = httpsMatch[1]
+      const name = httpsMatch[2]
+      return { name, owner, nameWithOwner: `${owner}/${name}` }
+    }
+
+    // Fallback for other URL formats
+    const parts = url.split('/').filter(Boolean)
+    const name = parts[parts.length - 1]?.replace('.git', '') || 'unknown'
+    const owner = parts[parts.length - 2] || 'unknown'
+    return { name, owner, nameWithOwner: `${owner}/${name}` }
   }
 
   private saveState(): void {
@@ -175,6 +269,55 @@ class StateManager {
     return this.state.settings
   }
 
+  // Repository operations
+  getRepositories(): Repository[] {
+    return this.state.repositories
+  }
+
+  getRepository(id: string): Repository | undefined {
+    return this.state.repositories.find((r) => r.id === id)
+  }
+
+  getRepositoryByUrl(url: string): Repository | undefined {
+    return this.state.repositories.find((r) => r.url === url)
+  }
+
+  createRepository(input: {
+    name: string
+    nameWithOwner: string
+    url: string
+    owner: string
+    baseBranch: string
+    isPrivate: boolean
+  }): Repository {
+    const now = new Date().toISOString()
+    const repository: Repository = {
+      id: uuidv4(),
+      ...input,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    this.state.repositories.push(repository)
+    this.saveState()
+    return repository
+  }
+
+  deleteRepository(id: string): boolean {
+    // Check if any projects reference this repository
+    const hasProjects = this.state.projects.some((p) => p.repositoryId === id)
+    if (hasProjects) {
+      throw new Error('Cannot delete repository with existing projects')
+    }
+
+    const index = this.state.repositories.findIndex((r) => r.id === id)
+    if (index === -1) return false
+
+    this.state.repositories.splice(index, 1)
+    this.saveState()
+    return true
+  }
+
   // Project operations
   getProjects(): Project[] {
     return this.state.projects
@@ -185,11 +328,11 @@ class StateManager {
   }
 
   createProject(input: {
+    repositoryId: string
     name: string
     description: string
     productBrief: string
     solutionBrief: string
-    repoUrl: string
     baseBranch: string
   }): Project {
     const now = new Date().toISOString()

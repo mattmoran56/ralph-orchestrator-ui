@@ -1,12 +1,12 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useProjectStore } from '../stores/projectStore'
-import type { AppState } from '../types'
+import type { AppState, GitHubRepo, CreateRepositoryInput } from '../types'
 
 // Check if we're running in Electron (evaluated at runtime, not module load)
 const isElectron = () => typeof window !== 'undefined' && window.electronAPI !== undefined
 
 export function useElectronSync() {
-  const { setProjects, setSettings, setLoading, setError } = useProjectStore()
+  const { setRepositories, setProjects, setSettings, setLoading, setError } = useProjectStore()
 
   // Load initial state from Electron
   const loadState = useCallback(async () => {
@@ -16,6 +16,7 @@ export function useElectronSync() {
       setLoading(true)
       const state = await window.electronAPI.getState()
       if (state) {
+        setRepositories(state.repositories || [])
         setProjects(state.projects || [])
         setSettings(state.settings)
       }
@@ -25,7 +26,7 @@ export function useElectronSync() {
     } finally {
       setLoading(false)
     }
-  }, [setProjects, setSettings, setLoading, setError])
+  }, [setRepositories, setProjects, setSettings, setLoading, setError])
 
   // Subscribe to state changes from main process
   useEffect(() => {
@@ -35,6 +36,7 @@ export function useElectronSync() {
 
     // Listen for state changes from main process (e.g., from file watcher)
     const unsubscribe = window.electronAPI.onStateChange((state: AppState) => {
+      setRepositories(state.repositories || [])
       setProjects(state.projects || [])
       setSettings(state.settings)
     })
@@ -42,7 +44,7 @@ export function useElectronSync() {
     return () => {
       unsubscribe()
     }
-  }, [loadState, setProjects, setSettings])
+  }, [loadState, setRepositories, setProjects, setSettings])
 
   return { isElectron, loadState }
 }
@@ -136,6 +138,78 @@ export function useElectronProjects() {
     deleteProject,
     startProject,
     stopProject
+  }
+}
+
+// Hook for repository operations that sync with Electron
+export function useElectronRepositories() {
+  const store = useProjectStore()
+  const [isLoadingGitHub, setIsLoadingGitHub] = useState(false)
+  const [gitHubRepos, setGitHubRepos] = useState<GitHubRepo[]>([])
+  const [gitHubError, setGitHubError] = useState<string | null>(null)
+
+  const fetchGitHubRepos = useCallback(async () => {
+    if (!isElectron()) return []
+
+    setIsLoadingGitHub(true)
+    setGitHubError(null)
+    try {
+      const repos = await window.electronAPI.listGitHubRepos()
+      setGitHubRepos(repos)
+      return repos
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch GitHub repositories'
+      console.error('Failed to fetch GitHub repos:', error)
+      setGitHubError(message)
+      return []
+    } finally {
+      setIsLoadingGitHub(false)
+    }
+  }, [])
+
+  const createRepository = useCallback(
+    async (input: CreateRepositoryInput) => {
+      if (isElectron()) {
+        try {
+          const repository = await window.electronAPI.createRepository(input)
+          // Store will be updated via state change event
+          return repository
+        } catch (error) {
+          console.error('Failed to create repository:', error)
+          throw error
+        }
+      } else {
+        return store.addRepository(input)
+      }
+    },
+    [store]
+  )
+
+  const deleteRepository = useCallback(
+    async (id: string) => {
+      if (isElectron()) {
+        try {
+          await window.electronAPI.deleteRepository(id)
+          // Store will be updated via state change event
+        } catch (error) {
+          console.error('Failed to delete repository:', error)
+          throw error
+        }
+      } else {
+        store.deleteRepository(id)
+      }
+    },
+    [store]
+  )
+
+  return {
+    ...store,
+    isLoadingGitHub,
+    gitHubRepos,
+    gitHubError,
+    fetchGitHubRepos,
+    createRepository,
+    deleteRepository
   }
 }
 

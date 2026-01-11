@@ -33,6 +33,12 @@ const api = {
   // GitHub operations
   getGitHubAuthStatus: () => ipcRenderer.invoke('github:authStatus'),
   loginToGitHub: () => ipcRenderer.invoke('github:login'),
+  listGitHubRepos: () => ipcRenderer.invoke('github:listRepos'),
+
+  // Repository operations
+  getRepositories: () => ipcRenderer.invoke('repository:list'),
+  createRepository: (input: unknown) => ipcRenderer.invoke('repository:create', input),
+  deleteRepository: (id: string) => ipcRenderer.invoke('repository:delete', id),
 
   // Logs
   getTaskLogs: (projectId: string, taskId: string) =>

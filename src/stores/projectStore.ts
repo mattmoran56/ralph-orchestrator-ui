@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { Project, Task, CreateProjectInput, CreateTaskInput, UpdateProjectInput, UpdateTaskInput, AppState, Settings } from '../types'
+import type { Project, Task, Repository, CreateProjectInput, CreateTaskInput, CreateRepositoryInput, UpdateProjectInput, UpdateTaskInput, Settings } from '../types'
 
 interface ProjectStore {
   // State
+  repositories: Repository[]
   projects: Project[]
   settings: Settings
   selectedProjectId: string | null
@@ -12,12 +13,19 @@ interface ProjectStore {
   error: string | null
 
   // Actions
+  setRepositories: (repositories: Repository[]) => void
   setProjects: (projects: Project[]) => void
   setSettings: (settings: Settings) => void
   selectProject: (projectId: string | null) => void
   selectTask: (taskId: string | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+
+  // Repository CRUD
+  addRepository: (input: CreateRepositoryInput) => Repository
+  deleteRepository: (id: string) => void
+  getRepository: (id: string) => Repository | undefined
+  getProjectsForRepository: (repositoryId: string) => Project[]
 
   // Project CRUD
   addProject: (input: CreateProjectInput) => Project
@@ -45,6 +53,7 @@ const defaultSettings: Settings = {
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   // Initial state
+  repositories: [],
   projects: [],
   settings: defaultSettings,
   selectedProjectId: null,
@@ -53,12 +62,44 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   error: null,
 
   // State setters
+  setRepositories: (repositories) => set({ repositories }),
   setProjects: (projects) => set({ projects }),
   setSettings: (settings) => set({ settings }),
   selectProject: (projectId) => set({ selectedProjectId: projectId, selectedTaskId: null }),
   selectTask: (taskId) => set({ selectedTaskId: taskId }),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
+
+  // Repository CRUD
+  addRepository: (input) => {
+    const now = new Date().toISOString()
+    const newRepository: Repository = {
+      id: uuidv4(),
+      ...input,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    set((state) => ({
+      repositories: [...state.repositories, newRepository]
+    }))
+
+    return newRepository
+  },
+
+  deleteRepository: (id) => {
+    set((state) => ({
+      repositories: state.repositories.filter((r) => r.id !== id)
+    }))
+  },
+
+  getRepository: (id) => {
+    return get().repositories.find((r) => r.id === id)
+  },
+
+  getProjectsForRepository: (repositoryId) => {
+    return get().projects.filter((p) => p.repositoryId === repositoryId)
+  },
 
   // Project CRUD
   addProject: (input) => {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getProcessManager } from './ProcessManager'
 import { getRepoManager } from './RepoManager'
-import type { Task, Project } from './StateManager'
+import { getStateManager, type Task, type Project } from './StateManager'
 
 export interface VerificationResult {
   passed: boolean
@@ -16,6 +16,18 @@ export interface VerificationResult {
 }
 
 class Verifier {
+  /**
+   * Get the repository URL for a project
+   */
+  private getRepoUrl(project: Project): string {
+    const stateManager = getStateManager()
+    const repository = stateManager.getRepository(project.repositoryId)
+    if (!repository) {
+      throw new Error(`Repository not found for project ${project.id}`)
+    }
+    return repository.url
+  }
+
   /**
    * Run full verification for a task
    */
@@ -165,7 +177,8 @@ class Verifier {
     const repoManager = getRepoManager()
 
     // Get the git diff of changes
-    const diffResult = repoManager.getDiff(project.id, project.repoUrl)
+    const repoUrl = this.getRepoUrl(project)
+    const diffResult = repoManager.getDiff(project.id, repoUrl)
     const diff = diffResult.success ? diffResult.output : 'Unable to get diff'
 
     // Build the verification prompt

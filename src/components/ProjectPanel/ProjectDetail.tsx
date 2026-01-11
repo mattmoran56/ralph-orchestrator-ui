@@ -10,9 +10,10 @@ interface ProjectDetailProps {
 type Tab = 'overview' | 'productBrief' | 'solutionBrief' | 'settings'
 
 export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
-  const { getProject } = useProjectStore()
+  const { getProject, getRepository } = useProjectStore()
   const { updateProject, deleteProject } = useElectronProjects()
   const project = getProject(projectId)
+  const repository = project ? getRepository(project.repositoryId) : undefined
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [editing, setEditing] = useState(false)
 
@@ -21,7 +22,6 @@ export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
   const [description, setDescription] = useState(project?.description || '')
   const [productBrief, setProductBrief] = useState(project?.productBrief || '')
   const [solutionBrief, setSolutionBrief] = useState(project?.solutionBrief || '')
-  const [repoUrl, setRepoUrl] = useState(project?.repoUrl || '')
   const [baseBranch, setBaseBranch] = useState(project?.baseBranch || '')
 
   if (!project) {
@@ -38,7 +38,6 @@ export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
       description,
       productBrief,
       solutionBrief,
-      repoUrl,
       baseBranch
     })
     setEditing(false)
@@ -131,7 +130,7 @@ export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
                 Repository
               </label>
               <p className="text-gray-600 dark:text-gray-400 font-mono text-sm">
-                {project.repoUrl}
+                {repository?.nameWithOwner || 'Unknown repository'}
               </p>
             </div>
 
@@ -210,20 +209,11 @@ export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Repository URL
+                Repository
               </label>
-              {editing ? (
-                <input
-                  type="text"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  className="input font-mono text-sm"
-                />
-              ) : (
-                <p className="text-gray-600 dark:text-gray-400 font-mono text-sm">
-                  {project.repoUrl}
-                </p>
-              )}
+              <p className="text-gray-600 dark:text-gray-400 font-mono text-sm bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-md">
+                {repository?.nameWithOwner || 'Unknown repository'}
+              </p>
             </div>
 
             <div>
@@ -265,7 +255,6 @@ export function ProjectDetail({ projectId, onClose }: ProjectDetailProps) {
               setDescription(project.description)
               setProductBrief(project.productBrief)
               setSolutionBrief(project.solutionBrief)
-              setRepoUrl(project.repoUrl)
               setBaseBranch(project.baseBranch)
             }}
             className="btn-secondary"

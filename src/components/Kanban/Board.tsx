@@ -24,13 +24,13 @@ export function KanbanBoard({ projectId, onTaskSelect, onSettingsClick }: Kanban
   const project = getProject(projectId)
   const [showNewTask, setShowNewTask] = useState(false)
 
-  const tasksByStatus = useMemo(() => {
+  const tasksByStatus = useMemo((): Partial<Record<TaskStatus, Task[]>> => {
     if (!project) return {}
-    return project.tasks.reduce((acc, task) => {
+    return project.tasks.reduce<Partial<Record<TaskStatus, Task[]>>>((acc, task) => {
       if (!acc[task.status]) acc[task.status] = []
-      acc[task.status].push(task)
+      acc[task.status]!.push(task)
       return acc
-    }, {} as Record<TaskStatus, Task[]>)
+    }, {})
   }, [project])
 
   if (!project) {

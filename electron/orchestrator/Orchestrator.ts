@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { getStateManager, type Project, type Task, type TaskStatus } from './StateManager'
+import { getStateManager, type Project, type Task } from './StateManager'
 import { getRepoManager } from './RepoManager'
 import { getProcessManager } from './ProcessManager'
 import { getVerifier } from './Verifier'
@@ -18,6 +18,18 @@ class Orchestrator {
   constructor() {
     const stateManager = getStateManager()
     this.maxParallelProjects = stateManager.getSettings().maxParallelProjects
+  }
+
+  /**
+   * Get the repository URL for a project
+   */
+  private getRepoUrl(project: Project): string {
+    const stateManager = getStateManager()
+    const repository = stateManager.getRepository(project.repositoryId)
+    if (!repository) {
+      throw new Error(`Repository not found for project ${project.id}`)
+    }
+    return repository.url
   }
 
   /**
@@ -92,7 +104,8 @@ class Orchestrator {
       return
     }
 
-    const workingDirectory = repoManager.getRepoPath(projectId, project.repoUrl)
+    const repoUrl = this.getRepoUrl(project)
+    const workingDirectory = repoManager.getRepoPath(projectId, repoUrl)
     this.log(projectId, `Working directory: ${workingDirectory}`)
 
     // Main loop
@@ -130,11 +143,12 @@ class Orchestrator {
    */
   private async setupRepository(project: Project): Promise<{ success: boolean; error?: string }> {
     const repoManager = getRepoManager()
+    const repoUrl = this.getRepoUrl(project)
 
     // Step 1: Clone the repository (uses default branch)
-    if (!repoManager.workspaceExists(project.id, project.repoUrl)) {
-      this.log(project.id, `Cloning repository: ${project.repoUrl}`)
-      const cloneResult = await repoManager.cloneRepo(project.id, project.repoUrl)
+    if (!repoManager.workspaceExists(project.id, repoUrl)) {
+      this.log(project.id, `Cloning repository: ${repoUrl}`)
+      const cloneResult = await repoManager.cloneRepo(project.id, repoUrl)
 
       if (!cloneResult.success) {
         return { success: false, error: cloneResult.error }
@@ -142,14 +156,14 @@ class Orchestrator {
       this.log(project.id, 'Repository cloned successfully')
     } else {
       this.log(project.id, 'Repository already exists, fetching latest...')
-      await repoManager.cloneRepo(project.id, project.repoUrl) // This will fetch if exists
+      await repoManager.cloneRepo(project.id, repoUrl) // This will fetch if exists
     }
 
     // Step 2: Checkout or create the base branch
     this.log(project.id, `Setting up base branch: ${project.baseBranch}`)
     const baseBranchResult = repoManager.checkoutOrCreateBranch(
       project.id,
-      project.repoUrl,
+      repoUrl,
       project.baseBranch
     )
 
@@ -162,7 +176,7 @@ class Orchestrator {
     this.log(project.id, `Setting up working branch: ${project.workingBranch}`)
     const workingBranchResult = repoManager.createBranch(
       project.id,
-      project.repoUrl,
+      repoUrl,
       project.workingBranch,
       project.baseBranch
     )
@@ -313,9 +327,10 @@ class Orchestrator {
 
         // Commit changes
         const repoManager = getRepoManager()
+        const repoUrl = this.getRepoUrl(project)
         const commitResult = repoManager.commit(
           project.id,
-          project.repoUrl,
+          repoUrl,
           `Complete task: ${task.title}`
         )
 
@@ -416,9 +431,10 @@ ${otherTasks || 'No other tasks.'}
   /**
    * Complete a project - push and create PR
    */
-  private async completeProject(project: Project, workingDirectory: string): Promise<void> {
+  private async completeProject(project: Project, _workingDirectory: string): Promise<void> {
     const stateManager = getStateManager()
     const repoManager = getRepoManager()
+    const repoUrl = this.getRepoUrl(project)
 
     const completedTasks = project.tasks.filter((t) => t.status === 'done')
     const blockedTasks = project.tasks.filter((t) => t.status === 'blocked')
@@ -434,7 +450,7 @@ ${otherTasks || 'No other tasks.'}
     }
 
     // Check if working branch has any commits ahead of base branch
-    const diffCheck = repoManager.getDiffFromBase(project.id, project.repoUrl, project.baseBranch)
+    const diffCheck = repoManager.getDiffFromBase(project.id, repoUrl, project.baseBranch)
     if (diffCheck.success && !diffCheck.output.trim()) {
       this.log(project.id, 'No changes to merge - skipping PR creation')
       stateManager.updateProject(project.id, { status: 'completed' })
@@ -446,9 +462,9 @@ ${otherTasks || 'No other tasks.'}
     this.log(project.id, 'Preparing to create PR...')
 
     // Check if base branch exists on remote, push if not
-    if (!repoManager.remoteBranchExists(project.id, project.repoUrl, project.baseBranch)) {
+    if (!repoManager.remoteBranchExists(project.id, repoUrl, project.baseBranch)) {
       this.log(project.id, `Base branch ${project.baseBranch} not on remote, pushing...`)
-      const basePushResult = repoManager.pushBranch(project.id, project.repoUrl, project.baseBranch)
+      const basePushResult = repoManager.pushBranch(project.id, repoUrl, project.baseBranch)
       if (!basePushResult.success) {
         this.log(project.id, `Failed to push base branch: ${basePushResult.error}`)
         stateManager.updateProject(project.id, { status: 'failed' })
@@ -461,7 +477,7 @@ ${otherTasks || 'No other tasks.'}
     }
 
     // Push the working branch
-    const pushResult = repoManager.push(project.id, project.repoUrl, project.workingBranch)
+    const pushResult = repoManager.push(project.id, repoUrl, project.workingBranch)
 
     if (!pushResult.success) {
       this.log(project.id, `Failed to push: ${pushResult.error}`)
@@ -486,7 +502,7 @@ ${otherTasks || 'No other tasks.'}
     // Create PR to merge working branch into base branch
     const prResult = repoManager.createPullRequest(
       project.id,
-      project.repoUrl,
+      repoUrl,
       `[Ralph] ${project.name}`,
       prBody,
       project.baseBranch
