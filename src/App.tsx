@@ -16,21 +16,21 @@ function usePrevious<T>(value: T): T | undefined {
   return ref.current
 }
 
+type SidebarView = 'none' | 'project' | 'task'
+
 function App() {
   // Initialize Electron sync
   useElectronSync()
 
-  const { selectedProjectId, selectedTaskId, isLoading
-  } = useProjectStore()
-  const [showTaskDetail, setShowTaskDetail] = useState(false)
+  const { selectedProjectId, selectedTaskId, isLoading } = useProjectStore()
   const [showSettings, setShowSettings] = useState(false)
-  const [showProjectSidebar, setShowProjectSidebar] = useState(false)
+  const [sidebarView, setSidebarView] = useState<SidebarView>('none')
 
   // Show project sidebar when a new project is selected, and close settings
   const prevProjectId = usePrevious(selectedProjectId)
   useEffect(() => {
     if (selectedProjectId && selectedProjectId !== prevProjectId) {
-      setShowProjectSidebar(true)
+      setSidebarView('project')
       setShowSettings(false)
     }
   }, [selectedProjectId, prevProjectId])
@@ -39,8 +39,18 @@ function App() {
   const handleSettingsClick = () => {
     useProjectStore.getState().selectProject(null)
     setShowSettings(true)
-    setShowProjectSidebar(false)
-    setShowTaskDetail(false)
+    setSidebarView('none')
+  }
+
+  // Handle task selection - opens task sidebar (replaces project sidebar)
+  const handleTaskSelect = (taskId: string) => {
+    useProjectStore.setState({ selectedTaskId: taskId })
+    setSidebarView('task')
+  }
+
+  // Handle project settings click - opens project sidebar (replaces task sidebar)
+  const handleProjectSettingsClick = () => {
+    setSidebarView('project')
   }
 
   if (isLoading) {
@@ -79,11 +89,8 @@ function App() {
           ) : selectedProjectId ? (
             <KanbanBoard
               projectId={selectedProjectId}
-              onTaskSelect={(taskId) => {
-                useProjectStore.setState({ selectedTaskId: taskId })
-                setShowTaskDetail(true)
-              }}
-              onSettingsClick={() => setShowProjectSidebar(true)}
+              onTaskSelect={handleTaskSelect}
+              onSettingsClick={handleProjectSettingsClick}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
@@ -98,24 +105,21 @@ function App() {
             </div>
           )}
         </main>
-
-        {/* Task Detail Slide-over */}
-        {showTaskDetail && selectedTaskId && (
-          <aside className="w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col">
-            <TaskDetail
-              projectId={selectedProjectId!}
-              taskId={selectedTaskId}
-              onClose={() => setShowTaskDetail(false)}
-            />
-          </aside>
-        )}
       </div>
 
-      {/* Project Sidebar */}
-      {showProjectSidebar && selectedProjectId && (
+      {/* Right Sidebar - Only one at a time */}
+      {sidebarView === 'project' && selectedProjectId && (
         <ProjectSidebar
           projectId={selectedProjectId}
-          onClose={() => setShowProjectSidebar(false)}
+          onClose={() => setSidebarView('none')}
+        />
+      )}
+
+      {sidebarView === 'task' && selectedProjectId && selectedTaskId && (
+        <TaskDetail
+          projectId={selectedProjectId}
+          taskId={selectedTaskId}
+          onClose={() => setSidebarView('none')}
         />
       )}
     </div>
