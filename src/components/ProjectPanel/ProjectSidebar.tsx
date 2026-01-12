@@ -183,7 +183,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             </div>
           </div>
           {/* Tab buttons */}
-          <div className="flex px-4 mt-3">
+          <div className="flex px-4 mt-3 non-draggable">
             <button
               onClick={() => setActiveTab('settings')}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -317,9 +317,9 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             {/* Live Terminal View (show when running OR when there's content) */}
             {(isRunning || liveContent) && (
               <div className="border-b border-gray-200 dark:border-gray-700">
-                <button
+                <div
                   onClick={() => setLiveTerminalCollapsed(!liveTerminalCollapsed)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <svg
@@ -353,7 +353,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
                   >
                     Clear
                   </button>
-                </button>
+                </div>
                 {!liveTerminalCollapsed && (
                   <div className="px-4 pb-4">
                     <LogViewer
