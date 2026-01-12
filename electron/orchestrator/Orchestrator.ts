@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { getStateManager, type Project, type WorkspaceTasksData } from './StateManager'
+import { getStateManager, type Project } from './StateManager'
 import { getRepoManager } from './RepoManager'
 import { getProcessManager } from './ProcessManager'
 
@@ -8,10 +8,14 @@ interface OrchestratorState {
   status: 'initializing' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed'
   currentProcessId: string | null
   doneCount: number
+  pollInterval: ReturnType<typeof setInterval> | null
 }
 
 // Number of consecutive ALL_DONE signals required before completing
 const REQUIRED_DONE_COUNT = 2
+
+// How often to poll workspace files for UI updates (ms)
+const WORKSPACE_POLL_INTERVAL = 1000
 
 class Orchestrator {
   private activeProjects: Map<string, OrchestratorState> = new Map()
@@ -78,7 +82,8 @@ class Orchestrator {
       projectId,
       status: 'initializing',
       currentProcessId: null,
-      doneCount: 0
+      doneCount: 0,
+      pollInterval: null
     }
     this.activeProjects.set(projectId, orchestratorState)
 
@@ -133,17 +138,18 @@ class Orchestrator {
     this.log(projectId, `Working directory: ${workingDirectory}`)
 
     // Ensure .ralph folder and files exist before watching
-    // This handles the case where workspace exists but .ralph doesn't
+    // This creates the folder/files only if they don't exist - never overwrites
     const ralphSetup = repoManager.setupRalphFolder(projectId, repoUrl)
     if (!ralphSetup.success) {
       this.log(projectId, `Warning: Could not setup .ralph folder: ${ralphSetup.error}`)
     }
 
-    // Sync initial task state to workspace (creates tasks.json if needed)
-    this.syncTasksToWorkspace(project)
-
-    // Now start watching workspace files for real-time UI updates
+    // Start watching workspace files for real-time UI updates
+    // Tasks are read from workspace, not synced from StateManager
     stateManager.watchWorkspace(projectId)
+
+    // Start polling workspace every second to ensure UI stays in sync
+    this.startWorkspacePolling(projectId)
 
     // Main loop
     while (orchestratorState.status === 'running') {
@@ -170,10 +176,8 @@ class Orchestrator {
         break
       }
 
-      // Sync tasks to workspace before running Claude
-      this.syncTasksToWorkspace(project)
-
       // Build prompt and run Claude iteration
+      // Tasks are read from workspace by Claude - no sync needed
       const prompt = this.buildTaskPrompt(project, newIteration)
       const result = await this.runClaudeIteration(project, prompt, workingDirectory, newIteration)
 
@@ -204,41 +208,45 @@ class Orchestrator {
       await this.delay(2000)
     }
 
-    // Stop watching workspace files when loop ends
+    // Stop polling and watching workspace files when loop ends
+    this.stopWorkspacePolling(projectId)
     stateManager.unwatchWorkspace(projectId)
   }
 
   /**
-   * Sync project tasks to workspace tasks.json before running Claude
+   * Start polling workspace files to keep UI in sync
    */
-  private syncTasksToWorkspace(project: Project): void {
+  private startWorkspacePolling(projectId: string): void {
     const stateManager = getStateManager()
+    const orchestratorState = this.activeProjects.get(projectId)
+    if (!orchestratorState) return
 
-    const workspaceData: WorkspaceTasksData = {
-      project: {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        productBrief: project.productBrief || '',
-        solutionBrief: project.solutionBrief || ''
-      },
-      tasks: project.tasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        acceptanceCriteria: task.acceptanceCriteria,
-        priority: task.priority,
-        status: task.status,
-        attempts: task.attempts,
-        startedAt: task.startedAt || null,
-        verifyingAt: task.verifyingAt || null,
-        completedAt: task.completedAt || null
-      }))
+    // Clear any existing poll interval
+    if (orchestratorState.pollInterval) {
+      clearInterval(orchestratorState.pollInterval)
     }
 
-    const success = stateManager.writeWorkspaceTasks(project.id, workspaceData)
-    if (!success) {
-      this.log(project.id, 'Warning: Failed to sync tasks to workspace')
+    // Start polling every second
+    orchestratorState.pollInterval = setInterval(() => {
+      // Trigger UI refresh by notifying renderers
+      // This will cause them to re-read from workspace
+      stateManager.triggerNotify()
+    }, WORKSPACE_POLL_INTERVAL)
+
+    this.log(projectId, `Started workspace polling (every ${WORKSPACE_POLL_INTERVAL}ms)`)
+  }
+
+  /**
+   * Stop polling workspace files
+   */
+  private stopWorkspacePolling(projectId: string): void {
+    const orchestratorState = this.activeProjects.get(projectId)
+    if (!orchestratorState) return
+
+    if (orchestratorState.pollInterval) {
+      clearInterval(orchestratorState.pollInterval)
+      orchestratorState.pollInterval = null
+      this.log(projectId, 'Stopped workspace polling')
     }
   }
 
@@ -588,6 +596,9 @@ After completing your work for this iteration, check the task statuses:
       return false
     }
 
+    // Stop polling workspace
+    this.stopWorkspacePolling(projectId)
+
     // Stop current process if running
     if (orchestratorState.currentProcessId) {
       const processManager = getProcessManager()
@@ -616,6 +627,9 @@ After completing your work for this iteration, check the task statuses:
     if (!orchestratorState || orchestratorState.status !== 'running') {
       return false
     }
+
+    // Stop polling workspace
+    this.stopWorkspacePolling(projectId)
 
     orchestratorState.status = 'paused'
 

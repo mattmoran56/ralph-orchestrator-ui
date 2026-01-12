@@ -315,10 +315,80 @@ class StateManager {
   }
 
   private notifyRenderers(): void {
+    // Build state with workspace tasks merged in
+    const stateWithWorkspaceTasks = this.getStateWithWorkspaceTasks()
+
     // Send state update to all renderer windows
     BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('state:changed', this.state)
+      window.webContents.send('state:changed', stateWithWorkspaceTasks)
     })
+  }
+
+  /**
+   * Get app state with tasks merged from workspace files.
+   * For each project, if .ralph/tasks.json exists in the workspace,
+   * task statuses and runtime data are read from there instead of state.json.
+   */
+  getStateWithWorkspaceTasks(): AppState {
+    const projectsWithWorkspaceTasks = this.state.projects.map((project) => {
+      const workspaceTasks = this.readWorkspaceTasks(project.id)
+      if (workspaceTasks && workspaceTasks.tasks) {
+        // Merge workspace task data with StateManager task data
+        const mergedTasks = project.tasks.map((stateTask) => {
+          const workspaceTask = workspaceTasks.tasks.find((wt) => wt.id === stateTask.id)
+          if (workspaceTask) {
+            return {
+              ...stateTask,
+              status: workspaceTask.status,
+              attempts: workspaceTask.attempts,
+              startedAt: workspaceTask.startedAt || stateTask.startedAt,
+              verifyingAt: workspaceTask.verifyingAt || stateTask.verifyingAt,
+              completedAt: workspaceTask.completedAt || stateTask.completedAt
+            }
+          }
+          return stateTask
+        })
+
+        // Add tasks from workspace that don't exist in StateManager
+        const stateTaskIds = new Set(project.tasks.map((t) => t.id))
+        const newTasks = workspaceTasks.tasks
+          .filter((wt) => !stateTaskIds.has(wt.id))
+          .map((wt) => ({
+            id: wt.id,
+            title: wt.title,
+            description: wt.description,
+            acceptanceCriteria: wt.acceptanceCriteria,
+            status: wt.status as TaskStatus,
+            priority: wt.priority,
+            logs: [] as LogEntry[],
+            attempts: wt.attempts,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            startedAt: wt.startedAt || undefined,
+            verifyingAt: wt.verifyingAt || undefined,
+            completedAt: wt.completedAt || undefined
+          }))
+
+        return {
+          ...project,
+          tasks: [...mergedTasks, ...newTasks]
+        }
+      }
+      return project
+    })
+
+    return {
+      ...this.state,
+      projects: projectsWithWorkspaceTasks
+    }
+  }
+
+  /**
+   * Trigger a notification to renderers to refresh state.
+   * Called after workspace file changes to update UI.
+   */
+  triggerNotify(): void {
+    this.notifyRenderers()
   }
 
   // Public API
@@ -833,7 +903,7 @@ class StateManager {
 
   /**
    * Handle changes to workspace tasks.json
-   * Syncs task status/data from workspace file to StateManager
+   * Just notifies renderers to re-read from workspace - no sync to state.json needed
    */
   private handleWorkspaceTasksChange(projectId: string, tasksPath: string): void {
     try {
@@ -842,60 +912,10 @@ class StateManager {
         return
       }
 
-      const content = readFileSync(tasksPath, 'utf-8')
-      const workspaceData = JSON.parse(content) as WorkspaceTasksData
-
-      const project = this.getProject(projectId)
-      if (!project) {
-        console.error(`[StateManager] Project not found while handling tasks change: ${projectId}`)
-        return
-      }
-
-      // Sync each task from workspace to StateManager
-      let hasChanges = false
-      for (const workspaceTask of workspaceData.tasks) {
-        const existingTask = project.tasks.find((t) => t.id === workspaceTask.id)
-        if (!existingTask) {
-          // Task doesn't exist in StateManager - could be created by Claude
-          // For now, log this but don't auto-add (could be a future feature)
-          console.log(`[StateManager] New task in workspace: ${workspaceTask.id} - ${workspaceTask.title}`)
-          continue
-        }
-
-        // Check if status or other fields changed
-        const statusChanged = existingTask.status !== workspaceTask.status
-        const attemptsChanged = existingTask.attempts !== workspaceTask.attempts
-
-        if (statusChanged || attemptsChanged) {
-          hasChanges = true
-          console.log(
-            `[StateManager] Task ${workspaceTask.id} changed: ` +
-            `status ${existingTask.status} -> ${workspaceTask.status}, ` +
-            `attempts ${existingTask.attempts} -> ${workspaceTask.attempts}`
-          )
-
-          // Update the task in StateManager
-          // Note: We update directly without calling saveState() yet to batch the save
-          const taskIndex = project.tasks.findIndex((t) => t.id === workspaceTask.id)
-          if (taskIndex !== -1) {
-            project.tasks[taskIndex] = {
-              ...project.tasks[taskIndex],
-              status: workspaceTask.status,
-              attempts: workspaceTask.attempts,
-              startedAt: workspaceTask.startedAt || project.tasks[taskIndex].startedAt,
-              verifyingAt: workspaceTask.verifyingAt || project.tasks[taskIndex].verifyingAt,
-              completedAt: workspaceTask.completedAt || project.tasks[taskIndex].completedAt,
-              updatedAt: new Date().toISOString()
-            }
-          }
-        }
-      }
-
-      if (hasChanges) {
-        project.updatedAt = new Date().toISOString()
-        this.saveState()
-        console.log(`[StateManager] Synced task changes from workspace for project ${projectId}`)
-      }
+      // Just log the change and notify renderers
+      // Tasks are read from workspace on demand via getStateWithWorkspaceTasks()
+      console.log(`[StateManager] Workspace tasks.json changed for project ${projectId}`)
+      this.notifyRenderers()
     } catch (error) {
       console.error(`[StateManager] Error handling workspace tasks change for project ${projectId}:`, error)
     }

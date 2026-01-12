@@ -1,53 +1,44 @@
 import { ipcMain, app } from 'electron'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { getStateManager, WorkspaceTasksData } from '../orchestrator/StateManager'
+import { getStateManager, WorkspaceTasksData, TaskStatus } from '../orchestrator/StateManager'
 import { getOrchestrator } from '../orchestrator/Orchestrator'
 import { getProcessManager } from '../orchestrator/ProcessManager'
 import { getRepoManager } from '../orchestrator/RepoManager'
+import { v4 as uuidv4 } from 'uuid'
 
 // Initialize state manager and repo manager
 const stateManager = getStateManager()
 const repoManager = getRepoManager()
 
 /**
- * Helper function to sync a project's tasks to the workspace tasks.json file.
- * This should be called after any task modification (create, update, delete, reorder).
- * Handles missing workspaces gracefully - workspace may not exist yet.
+ * Read tasks from workspace .ralph/tasks.json
+ * Returns the tasks array or empty array if not found
  */
-function syncTasksToWorkspace(projectId: string): boolean {
+function readWorkspaceTasks(projectId: string): WorkspaceTasksData | null {
+  return stateManager.readWorkspaceTasks(projectId)
+}
+
+/**
+ * Write tasks to workspace .ralph/tasks.json
+ * This is the primary storage for tasks - state.json does NOT store tasks
+ */
+function writeWorkspaceTasks(projectId: string, data: WorkspaceTasksData): boolean {
+  return stateManager.writeWorkspaceTasks(projectId, data)
+}
+
+/**
+ * Get project metadata for workspace tasks.json
+ */
+function getProjectMetadata(projectId: string): WorkspaceTasksData['project'] | null {
   const project = stateManager.getProject(projectId)
-  if (!project) return false
-
-  // Build the workspace tasks data structure
-  const tasksData: WorkspaceTasksData = {
-    project: {
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      productBrief: project.productBrief,
-      solutionBrief: project.solutionBrief
-    },
-    tasks: project.tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      acceptanceCriteria: task.acceptanceCriteria,
-      priority: task.priority,
-      status: task.status,
-      attempts: task.attempts,
-      startedAt: task.startedAt || null,
-      verifyingAt: task.verifyingAt || null,
-      completedAt: task.completedAt || null
-    }))
+  if (!project) return null
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    productBrief: project.productBrief,
+    solutionBrief: project.solutionBrief
   }
-
-  // Attempt to write - this will fail gracefully if workspace doesn't exist
-  const success = stateManager.writeWorkspaceTasks(projectId, tasksData)
-  if (!success) {
-    // This is expected if workspace hasn't been set up yet - not an error
-    console.log(`[ipc] Could not sync tasks to workspace for project ${projectId} - workspace may not exist yet`)
-  }
-  return success
 }
 
 // Path operations
@@ -61,7 +52,8 @@ ipcMain.handle('get-app-version', () => {
 
 // State operations
 ipcMain.handle('state:get', () => {
-  return stateManager.getState()
+  // Return state with tasks merged from workspace files
+  return stateManager.getStateWithWorkspaceTasks()
 })
 
 ipcMain.handle('state:save', (_event, state) => {
@@ -144,9 +136,19 @@ ipcMain.handle('project:create', async (_event, input) => {
 ipcMain.handle('project:update', (_event, id: string, updates) => {
   const result = stateManager.updateProject(id, updates)
 
-  // Sync to workspace if project metadata changed (name, description, briefs)
+  // Sync project metadata to workspace if name, description, or briefs changed
   if (result && (updates.name || updates.description || updates.productBrief || updates.solutionBrief)) {
-    syncTasksToWorkspace(id)
+    const workspaceData = readWorkspaceTasks(id)
+    if (workspaceData) {
+      workspaceData.project = {
+        id: result.id,
+        name: result.name,
+        description: result.description,
+        productBrief: result.productBrief,
+        solutionBrief: result.solutionBrief
+      }
+      writeWorkspaceTasks(id, workspaceData)
+    }
   }
 
   return result
@@ -156,112 +158,168 @@ ipcMain.handle('project:delete', (_event, id: string) => {
   return stateManager.deleteProject(id)
 })
 
-// Sync tasks from StateManager to workspace tasks.json
+// Sync tasks - kept for backwards compatibility but now just triggers notify
+// since workspace is the source of truth
 ipcMain.handle('project:syncTasks', (_event, projectId: string) => {
   const project = stateManager.getProject(projectId)
   if (!project) {
     return { success: false, error: 'Project not found' }
   }
 
-  // Build the workspace tasks data structure
-  const tasksData: WorkspaceTasksData = {
-    project: {
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      productBrief: project.productBrief,
-      solutionBrief: project.solutionBrief
-    },
-    tasks: project.tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      acceptanceCriteria: task.acceptanceCriteria,
-      priority: task.priority,
-      status: task.status,
-      attempts: task.attempts,
-      startedAt: task.startedAt || null,
-      verifyingAt: task.verifyingAt || null,
-      completedAt: task.completedAt || null
-    }))
-  }
-
-  const success = stateManager.writeWorkspaceTasks(projectId, tasksData)
-  if (!success) {
-    return { success: false, error: 'Failed to write tasks.json - workspace may not exist' }
-  }
-
+  // Just trigger a notify to refresh UI from workspace
+  stateManager.triggerNotify()
   return { success: true }
 })
 
-// Task operations
+// Task operations - ALL task data is stored in workspace .ralph/tasks.json
+
 ipcMain.handle('task:list', (_event, projectId: string) => {
-  return stateManager.getTasks(projectId)
+  const workspaceData = readWorkspaceTasks(projectId)
+  return workspaceData?.tasks || []
 })
 
 ipcMain.handle('task:get', (_event, projectId: string, taskId: string) => {
-  return stateManager.getTask(projectId, taskId)
+  const workspaceData = readWorkspaceTasks(projectId)
+  if (!workspaceData) return null
+  return workspaceData.tasks.find((t) => t.id === taskId) || null
 })
 
 ipcMain.handle('task:create', (_event, projectId: string, input) => {
-  const task = stateManager.createTask(projectId, input)
-  if (task) {
-    // Sync to workspace after creating task
-    syncTasksToWorkspace(projectId)
+  const workspaceData = readWorkspaceTasks(projectId)
+  const projectMeta = getProjectMetadata(projectId)
+
+  if (!projectMeta) {
+    console.error(`[ipc] Project not found: ${projectId}`)
+    return null
   }
-  return task
+
+  const existingTasks = workspaceData?.tasks || []
+
+  const newTask = {
+    id: uuidv4(),
+    title: input.title,
+    description: input.description || '',
+    acceptanceCriteria: input.acceptanceCriteria || [],
+    priority: input.priority ?? existingTasks.length,
+    status: (input.status as TaskStatus) || 'backlog',
+    attempts: 0,
+    startedAt: null,
+    verifyingAt: null,
+    completedAt: null
+  }
+
+  const updatedData: WorkspaceTasksData = {
+    project: workspaceData?.project || projectMeta,
+    tasks: [...existingTasks, newTask]
+  }
+
+  const success = writeWorkspaceTasks(projectId, updatedData)
+  if (!success) {
+    console.error(`[ipc] Failed to write task to workspace: ${projectId}`)
+    return null
+  }
+
+  // Notify renderers of the change
+  stateManager.triggerNotify()
+
+  return newTask
 })
 
 ipcMain.handle('task:update', (_event, projectId: string, taskId: string, updates) => {
-  const result = stateManager.updateTask(projectId, taskId, updates)
+  const workspaceData = readWorkspaceTasks(projectId)
+  if (!workspaceData) {
+    console.error(`[ipc] Workspace not found for project: ${projectId}`)
+    return null
+  }
+
+  const taskIndex = workspaceData.tasks.findIndex((t) => t.id === taskId)
+  if (taskIndex === -1) {
+    console.error(`[ipc] Task not found: ${taskId}`)
+    return null
+  }
+
+  // Update the task
+  workspaceData.tasks[taskIndex] = {
+    ...workspaceData.tasks[taskIndex],
+    ...updates
+  }
+
+  const success = writeWorkspaceTasks(projectId, workspaceData)
+  if (!success) {
+    console.error(`[ipc] Failed to update task in workspace: ${projectId}`)
+    return null
+  }
 
   // If a task was moved to backlog and project is not running, reset project to idle
-  // This allows restarting completed/failed projects by moving tasks back to backlog
   if (updates.status === 'backlog') {
     const project = stateManager.getProject(projectId)
     if (project && project.status !== 'running') {
-      const hasBacklogTasks = project.tasks.some((t) => t.status === 'backlog')
+      const hasBacklogTasks = workspaceData.tasks.some((t) => t.status === 'backlog')
       if (hasBacklogTasks) {
         stateManager.updateProject(projectId, { status: 'idle' })
       }
     }
   }
 
-  // Sync to workspace after updating task
-  if (result) {
-    syncTasksToWorkspace(projectId)
-  }
+  // Notify renderers of the change
+  stateManager.triggerNotify()
 
-  return result
+  return workspaceData.tasks[taskIndex]
 })
 
 ipcMain.handle('task:delete', (_event, projectId: string, taskId: string) => {
-  const result = stateManager.deleteTask(projectId, taskId)
-  if (result) {
-    // Sync to workspace after deleting task
-    syncTasksToWorkspace(projectId)
+  const workspaceData = readWorkspaceTasks(projectId)
+  if (!workspaceData) {
+    console.error(`[ipc] Workspace not found for project: ${projectId}`)
+    return false
   }
-  return result
+
+  const taskIndex = workspaceData.tasks.findIndex((t) => t.id === taskId)
+  if (taskIndex === -1) {
+    console.error(`[ipc] Task not found: ${taskId}`)
+    return false
+  }
+
+  // Remove the task
+  workspaceData.tasks.splice(taskIndex, 1)
+
+  const success = writeWorkspaceTasks(projectId, workspaceData)
+  if (!success) {
+    console.error(`[ipc] Failed to delete task from workspace: ${projectId}`)
+    return false
+  }
+
+  // Notify renderers of the change
+  stateManager.triggerNotify()
+
+  return true
 })
 
 ipcMain.handle('task:reorder', (_event, projectId: string, taskIds: string[]) => {
-  // Update priorities based on the new order
-  const project = stateManager.getProject(projectId)
-  if (!project) return false
+  const workspaceData = readWorkspaceTasks(projectId)
+  if (!workspaceData) {
+    console.error(`[ipc] Workspace not found for project: ${projectId}`)
+    return false
+  }
 
   // Update each task's priority based on its position in the taskIds array
-  let updated = false
   for (let i = 0; i < taskIds.length; i++) {
-    const result = stateManager.updateTask(projectId, taskIds[i], { priority: i })
-    if (result) updated = true
+    const task = workspaceData.tasks.find((t) => t.id === taskIds[i])
+    if (task) {
+      task.priority = i
+    }
   }
 
-  // Sync to workspace after reordering
-  if (updated) {
-    syncTasksToWorkspace(projectId)
+  const success = writeWorkspaceTasks(projectId, workspaceData)
+  if (!success) {
+    console.error(`[ipc] Failed to reorder tasks in workspace: ${projectId}`)
+    return false
   }
 
-  return updated
+  // Notify renderers of the change
+  stateManager.triggerNotify()
+
+  return true
 })
 
 // Log operations
