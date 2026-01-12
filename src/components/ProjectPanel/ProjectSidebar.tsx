@@ -24,6 +24,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const { liveContent, clear: clearLiveLog } = useProjectLiveLog(projectId, isRunning)
 
   const [activeTab, setActiveTab] = useState<'settings' | 'logs'>('settings')
+  const [liveTerminalCollapsed, setLiveTerminalCollapsed] = useState(false)
   const [width, setWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
   const [name, setName] = useState(project?.name || '')
@@ -313,37 +314,59 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
         ) : (
           /* Logs tab */
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Live Terminal View (when project is running) */}
-            {isRunning && (
+            {/* Live Terminal View (show when running OR when there's content) */}
+            {(isRunning || liveContent) && (
               <div className="border-b border-gray-200 dark:border-gray-700">
-                <div className="px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50">
+                <button
+                  onClick={() => setLiveTerminalCollapsed(!liveTerminalCollapsed)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                >
                   <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
+                    <svg
+                      className={`w-4 h-4 text-gray-400 transition-transform ${liveTerminalCollapsed ? '' : 'rotate-90'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    {isRunning ? (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                      </span>
+                    ) : (
+                      <span className="relative flex h-2 w-2">
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-400"></span>
+                      </span>
+                    )}
                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                      Live Terminal
+                      {isRunning ? 'Live Terminal' : 'Terminal Output'}
                     </span>
                   </div>
                   <button
-                    onClick={clearLiveLog}
-                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearLiveLog()
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
                     Clear
                   </button>
-                </div>
-                <div className="px-4 pb-4">
-                  <LogViewer
-                    logContent={liveContent || 'Waiting for Claude output...'}
-                    isLive={true}
-                    resizable={true}
-                    defaultHeight={250}
-                    minHeight={150}
-                    maxHeight={500}
-                    autoScroll={true}
-                  />
-                </div>
+                </button>
+                {!liveTerminalCollapsed && (
+                  <div className="px-4 pb-4">
+                    <LogViewer
+                      logContent={liveContent || 'Waiting for Claude output...'}
+                      isLive={isRunning}
+                      resizable={true}
+                      defaultHeight={400}
+                      minHeight={200}
+                      maxHeight={800}
+                      autoScroll={isRunning}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

@@ -1,19 +1,21 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 /**
  * Hook to subscribe to live log updates from all Claude processes for a project.
  * Unlike useLiveLog which filters by taskId, this captures all output for the project.
- * Only subscribes when `enabled` is true.
+ * Only subscribes when `enabled` is true, but preserves content when disabled.
  */
 export function useProjectLiveLog(projectId: string, enabled: boolean) {
   const [liveContent, setLiveContent] = useState('')
+  const previousProjectId = useRef(projectId)
 
-  // Clear content when project changes or becomes disabled
+  // Only clear content when project changes (not when disabled)
   useEffect(() => {
-    if (!enabled) {
+    if (projectId !== previousProjectId.current) {
       setLiveContent('')
+      previousProjectId.current = projectId
     }
-  }, [enabled, projectId])
+  }, [projectId])
 
   // Subscribe to log updates for all tasks in this project
   useEffect(() => {
