@@ -5,6 +5,7 @@ interface LoopLogsViewerProps {
   projectId: string
   currentIteration: number
   maxIterations: number
+  isRunning?: boolean
 }
 
 // Action type styling configuration for workspace logs
@@ -214,7 +215,7 @@ function IterationGroup({ iteration, entries, isExpanded, onToggle }: IterationG
 // Check if we're running in Electron
 const isElectron = () => typeof window !== 'undefined' && window.electronAPI !== undefined
 
-export function LoopLogsViewer({ projectId, currentIteration, maxIterations }: LoopLogsViewerProps) {
+export function LoopLogsViewer({ projectId, currentIteration, maxIterations, isRunning = false }: LoopLogsViewerProps) {
   const [logs, setLogs] = useState<LoopLogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -240,6 +241,17 @@ export function LoopLogsViewer({ projectId, currentIteration, maxIterations }: L
   useEffect(() => {
     fetchLogs()
   }, [fetchLogs])
+
+  // Poll logs every second when project is running
+  useEffect(() => {
+    if (!isRunning || !isElectron()) return
+
+    const pollInterval = setInterval(() => {
+      fetchLogs()
+    }, 1000)
+
+    return () => clearInterval(pollInterval)
+  }, [isRunning, fetchLogs])
 
   // Subscribe to workspace logs changes
   useEffect(() => {

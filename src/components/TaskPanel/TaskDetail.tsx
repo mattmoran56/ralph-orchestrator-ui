@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronTasks } from '../../hooks/useElectronSync'
-import { useLiveLog } from '../../hooks/useLiveLog'
 import { MarkdownEditor } from '../Editor/MarkdownEditor'
 import { TaskTimer } from './TaskTimer'
-import { LogViewer } from './LogViewer'
 import type { Task } from '../../types'
 
 interface TaskDetailProps {
@@ -15,14 +13,11 @@ interface TaskDetailProps {
 
 export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
   const { getTask } = useProjectStore()
-  const { updateTask, deleteTask, getTaskLogs } = useElectronTasks()
+  const { updateTask, deleteTask } = useElectronTasks()
   const task = getTask(projectId, taskId)
 
   const [width, setWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
-  const [showLogs, setShowLogs] = useState(false)
-  const [logContent, setLogContent] = useState<string>('')
-  const [loadingLogs, setLoadingLogs] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -30,12 +25,6 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
   const [title, setTitle] = useState(task?.title || '')
   const [description, setDescription] = useState(task?.description || '')
   const [criteria, setCriteria] = useState(task?.acceptanceCriteria.join('\n') || '')
-
-  // Check if task is currently active (running)
-  const isTaskActive = task?.status === 'in_progress' || task?.status === 'verifying'
-
-  // Subscribe to live logs when task is active
-  const { liveContent } = useLiveLog(projectId, taskId, isTaskActive)
 
   // Sync local state when task changes
   useEffect(() => {
@@ -95,23 +84,6 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
       }
     }
   }, [])
-
-  // Auto-show logs when task becomes active
-  useEffect(() => {
-    if (isTaskActive) {
-      setShowLogs(true)
-    }
-  }, [isTaskActive])
-
-  // Load log content from file when showing logs for completed tasks
-  useEffect(() => {
-    if (showLogs && task && !isTaskActive && task.logs.length > 0) {
-      setLoadingLogs(true)
-      getTaskLogs(projectId, taskId)
-        .then((content) => setLogContent(content))
-        .finally(() => setLoadingLogs(false))
-    }
-  }, [showLogs, task, projectId, taskId, getTaskLogs, isTaskActive])
 
   if (!task) {
     return null
@@ -223,106 +195,11 @@ export function TaskDetail({ projectId, taskId, onClose }: TaskDetailProps) {
 
         {/* Stats */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Attempts</div>
-              <div className="text-lg font-medium">{task.attempts}</div>
-            </div>
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Logs</div>
-              <div className="text-lg font-medium">{task.logs.length}</div>
-            </div>
+          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Attempts</div>
+            <div className="text-lg font-medium">{task.attempts}</div>
           </div>
         </div>
-
-        {/* Live Logs Section (when task is active) */}
-        {isTaskActive && (
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-              Live Output
-            </h4>
-            <LogViewer
-              logContent={liveContent || 'Waiting for output...'}
-              isLive={true}
-              resizable={true}
-              defaultHeight={400}
-              minHeight={200}
-              maxHeight={700}
-            />
-          </div>
-        )}
-
-        {/* Execution Logs Section (historical logs) */}
-        {task.logs.length > 0 && !isTaskActive && (
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <button
-              onClick={() => setShowLogs(!showLogs)}
-              className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2"
-            >
-              <svg
-                className={`w-4 h-4 transition-transform ${showLogs ? 'rotate-90' : ''}`}
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Execution Logs ({task.logs.length})
-            </button>
-            {showLogs && (
-              <div className="space-y-3">
-                {/* Log viewer for most recent log */}
-                {logContent && (
-                  <LogViewer
-                    logContent={logContent}
-                    title="Latest Log"
-                    resizable={true}
-                    defaultHeight={350}
-                    minHeight={150}
-                    maxHeight={600}
-                  />
-                )}
-                {loadingLogs && (
-                  <div className="text-sm text-gray-500">Loading logs...</div>
-                )}
-                {/* Log summaries */}
-                <div className="space-y-2">
-                  {task.logs.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`p-3 rounded-lg border ${
-                        log.success
-                          ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
-                          : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500 dark:text-gray-400">
-                          {new Date(log.timestamp).toLocaleString()}
-                        </span>
-                        <span
-                          className={
-                            log.success
-                              ? 'text-green-600 dark:text-green-400'
-                              : 'text-red-600 dark:text-red-400'
-                          }
-                        >
-                          {log.success ? 'Success' : 'Failed'}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                        {log.summary}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Actions */}
         <div className="p-4">
