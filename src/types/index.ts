@@ -1,17 +1,17 @@
 // Project types
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 export type TaskStatus = 'backlog' | 'in_progress' | 'verifying' | 'done' | 'blocked'
-export type LoopStep = 'task_selection' | 'execution' | 'verification' | 'result'
 
+// Workspace log entry format (matches .ralph/logs.json)
+// action can be: 'status_change', 'commit', 'verification', 'error', or any descriptive string
 export interface LoopLogEntry {
-  id: string
-  iteration: number
   timestamp: string
-  step: LoopStep
+  iteration: number
   taskId?: string
-  taskTitle?: string
+  action: string
+  from?: string  // Previous status (for status_change actions)
+  to?: string    // New status (for status_change actions)
   message: string
-  details?: string
 }
 
 // Repository type (top-level container for projects)
@@ -163,6 +163,7 @@ export interface ElectronAPI {
   createProject: (project: CreateProjectInput) => Promise<Project>
   updateProject: (id: string, updates: UpdateProjectInput) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
+  syncTasks: (projectId: string) => Promise<{ success: boolean; error?: string }>
   // Task operations
   createTask: (projectId: string, task: CreateTaskInput) => Promise<Task>
   updateTask: (projectId: string, taskId: string, updates: UpdateTaskInput) => Promise<Task>
@@ -173,16 +174,17 @@ export interface ElectronAPI {
   pauseProject: (projectId: string) => Promise<void>
   getTaskLogs: (projectId: string, taskId: string) => Promise<string>
   isClaudeAvailable: () => Promise<boolean>
-  // Loop log operations
-  addLoopLog: (projectId: string, iteration: number, step: LoopStep, message: string, taskId?: string, details?: string) => Promise<LoopLogEntry | null>
-  getLoopLogs: (projectId: string) => Promise<LoopLogEntry[]>
+  // Loop/iteration operations
+  // Note: Loop logs are now read from workspace .ralph/logs.json files
   clearLoopLogs: (projectId: string) => Promise<Project | null>
+  getWorkspaceLogs: (projectId: string) => Promise<LoopLogEntry[]>
   // GitHub auth
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>
   loginToGitHub: () => Promise<{ success: boolean; error?: string }>
   // Event subscriptions
   onStateChange: (callback: (state: AppState) => void) => () => void
   onLogUpdate: (callback: (data: { projectId: string; taskId: string; log: string }) => void) => () => void
+  onWorkspaceLogsChange: (callback: (data: { projectId: string; entryCount: number }) => void) => () => void
 }
 
 // Extend Window interface

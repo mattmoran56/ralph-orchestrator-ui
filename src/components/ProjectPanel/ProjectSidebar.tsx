@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { MarkdownEditor } from '../Editor/MarkdownEditor'
 import { LoopLogsViewer } from './LoopLogsViewer'
+import { LogViewer } from '../TaskPanel/LogViewer'
 import { useProjectStore } from '../../stores/projectStore'
 import { useElectronProjects } from '../../hooks/useElectronSync'
+import { useProjectLiveLog } from '../../hooks/useProjectLiveLog'
 
 interface ProjectSidebarProps {
   projectId: string
@@ -15,7 +17,14 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
   const project = getProject(projectId)
   const repository = project ? getRepository(project.repositoryId) : undefined
 
+  // Check if project is running to show live logs
+  const isRunning = project?.status === 'running'
+
+  // Subscribe to live Claude output for the project
+  const { liveContent, clear: clearLiveLog } = useProjectLiveLog(projectId, isRunning)
+
   const [activeTab, setActiveTab] = useState<'settings' | 'logs'>('settings')
+  const [liveTerminalCollapsed, setLiveTerminalCollapsed] = useState(false)
   const [width, setWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
   const [name, setName] = useState(project?.name || '')
@@ -174,7 +183,7 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
             </div>
           </div>
           {/* Tab buttons */}
-          <div className="flex px-4 mt-3">
+          <div className="flex px-4 mt-3 non-draggable">
             <button
               onClick={() => setActiveTab('settings')}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -305,11 +314,79 @@ export function ProjectSidebar({ projectId, onClose }: ProjectSidebarProps) {
         ) : (
           /* Logs tab */
           <div className="flex-1 flex flex-col overflow-hidden">
-            <LoopLogsViewer
-              logs={project.loopLogs || []}
-              currentIteration={project.currentIteration || 0}
-              maxIterations={project.maxIterations || 50}
-            />
+            {/* Live Terminal View (show when running OR when there's content) */}
+            {(isRunning || liveContent) && (
+              <div className="border-b border-gray-200 dark:border-gray-700">
+                <div
+                  onClick={() => setLiveTerminalCollapsed(!liveTerminalCollapsed)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <svg
+                      className={`w-4 h-4 text-gray-400 transition-transform ${liveTerminalCollapsed ? '' : 'rotate-90'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    {isRunning ? (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                      </span>
+                    ) : (
+                      <span className="relative flex h-2 w-2">
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-400"></span>
+                      </span>
+                    )}
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {isRunning ? 'Live Terminal' : 'Terminal Output'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearLiveLog()
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {!liveTerminalCollapsed && (
+                  <div className="px-4 pb-4">
+                    <LogViewer
+                      logContent={liveContent || 'Waiting for Claude output...'}
+                      isLive={isRunning}
+                      resizable={true}
+                      defaultHeight={400}
+                      minHeight={200}
+                      maxHeight={800}
+                      autoScroll={isRunning}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Workspace Logs (logs.json) */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Activity Log
+                </span>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <LoopLogsViewer
+                  projectId={projectId}
+                  currentIteration={project.currentIteration || 0}
+                  maxIterations={project.maxIterations || 50}
+                  isRunning={isRunning}
+                />
+              </div>
+            </div>
+
             {/* Clear Logs button */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <button

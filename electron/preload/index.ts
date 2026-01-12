@@ -15,6 +15,7 @@ const api = {
   createProject: (project: unknown) => ipcRenderer.invoke('project:create', project),
   updateProject: (id: string, updates: unknown) => ipcRenderer.invoke('project:update', id, updates),
   deleteProject: (id: string) => ipcRenderer.invoke('project:delete', id),
+  syncTasks: (projectId: string) => ipcRenderer.invoke('project:syncTasks', projectId),
 
   // Task operations
   createTask: (projectId: string, task: unknown) => ipcRenderer.invoke('task:create', projectId, task),
@@ -45,13 +46,12 @@ const api = {
   getTaskLogs: (projectId: string, taskId: string) =>
     ipcRenderer.invoke('logs:get', projectId, taskId),
 
-  // Loop logs
-  addLoopLog: (projectId: string, iteration: number, step: string, message: string, taskId?: string, details?: string) =>
-    ipcRenderer.invoke('project:addLoopLog', projectId, iteration, step, message, taskId, details),
-  getLoopLogs: (projectId: string) =>
-    ipcRenderer.invoke('project:getLoopLogs', projectId),
+  // Loop/iteration operations
+  // Note: Loop logs are now read from workspace .ralph/logs.json files
   clearLoopLogs: (projectId: string) =>
     ipcRenderer.invoke('project:clearLoopLogs', projectId),
+  getWorkspaceLogs: (projectId: string) =>
+    ipcRenderer.invoke('project:getWorkspaceLogs', projectId),
 
   // Event subscriptions
   onStateChange: (callback: (state: unknown) => void) => {
@@ -70,6 +70,12 @@ const api = {
     const subscription = (_event: Electron.IpcRendererEvent, data: { projectId: string; message: string; timestamp: string }) => callback(data)
     ipcRenderer.on('orchestrator:log', subscription)
     return () => ipcRenderer.removeListener('orchestrator:log', subscription)
+  },
+
+  onWorkspaceLogsChange: (callback: (data: { projectId: string; entryCount: number }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: { projectId: string; entryCount: number }) => callback(data)
+    ipcRenderer.on('workspace:logsChanged', subscription)
+    return () => ipcRenderer.removeListener('workspace:logsChanged', subscription)
   }
 }
 
